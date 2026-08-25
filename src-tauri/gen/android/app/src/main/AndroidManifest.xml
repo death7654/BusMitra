@@ -4,6 +4,7 @@
 
     <!-- AndroidTV support -->
     <uses-feature android:name="android.software.leanback" android:required="false" />
+    <uses-feature android:name="android.hardware.location.gps" android:required="true" />
 
     <application
         android:icon="@mipmap/ic_launcher"
