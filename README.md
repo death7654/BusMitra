@@ -166,8 +166,8 @@ AGPL-3.0 — see [LICENSE](LICENSE).
 
 ## Team — BusMitra @ Technova 2026
 
-- Robinson George Arysseril
-- Rosmi Reji
 - Dhanush Subhash
 - Flavia Dary Joseph
+- Robinson George Arysseril
+- Rosmi Reji
 - Tessa Mariya
