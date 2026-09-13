@@ -37,8 +37,33 @@
 
       <button id="testgeo">test GeoLocation</button>
       <p id="coords-display">lat: —, lon: —</p>
+      <p id="speed-display">speed: —</p>
 
       <button id="testnotif">Test Notification</button>
+
+      <hr />
+
+      <h2>Bus Crowd Status</h2>
+      <form class="row" id="bus-status-form">
+        <input id="bus-id-input" type="number" min="1" value="1" placeholder="Bus ID" />
+        <button type="submit">Check Crowd</button>
+      </form>
+      <p id="bus-status-display">No bus checked yet.</p>
+
+      <div class="row">
+        <button id="checkin-btn">Check In To This Bus</button>
+        <select id="crowd-level-input">
+          <option value="1">1 - Very Low</option>
+          <option value="2">2 - Low</option>
+          <option value="3" selected>3 - Moderate</option>
+          <option value="4">4 - High</option>
+          <option value="5">5 - Very High</option>
+        </select>
+        <button id="report-btn">Report Crowd Level</button>
+      </div>
+      <p id="action-status"></p>
+
+      <p id="live-ping-display">Live GPS pings: waiting for location updates...</p>
     </main>
   </body>
 </html>
