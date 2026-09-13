@@ -1,5 +1,3 @@
-Absolutely. Here is the **complete `README.md` content as one clean copy-paste block**, with all 16 sections included and neatly formatted.
-
 ````markdown
 # 🚌 Bus Tracking and Crowd Prediction System - Backend
 
@@ -8,7 +6,6 @@ Absolutely. Here is the **complete `README.md` content as one clean copy-paste b
 This is the Python backend for the **Bus Tracking and Crowd Prediction System**.
 
 The backend receives:
-
 - GPS location data
 - Bus check-ins
 - Manual crowd reports
@@ -695,9 +692,7 @@ Recommendation
 JSON Response to Frontend
 ```
 
-The backend is ready to be connected to the **Tauri/frontend application** through HTTP/JSON.
 
-The frontend team does not need to know the internal SQLite or ML implementation. They only need to use the documented FastAPI endpoints.
 
 ```
 ```
