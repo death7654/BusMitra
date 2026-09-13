@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Starts the RouteMate backend, following the "Quick Start for Team
+    Starts the BusMitra backend, following the "Quick Start for Team
     Members" steps in backend/README.md.
 
 .DESCRIPTION
