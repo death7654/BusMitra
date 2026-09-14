@@ -75,3 +75,41 @@ class BusPredictionResponse(BaseModel):
 
     status: str
     message: str
+
+
+class RouteStopOut(BaseModel):
+    id: int
+    name: str
+    latitude: float
+    longitude: float
+
+
+class RouteBusOut(BaseModel):
+    id: int
+    bus_number: str
+    capacity: int
+
+
+class RouteOut(BaseModel):
+    route_id: int
+    route_number: str
+    route_name: str
+    stops: list[RouteStopOut]
+    buses: list[RouteBusOut]
+
+
+class ForecastPoint(BaseModel):
+    hour_of_day: int
+    predicted_fullness: float
+
+
+class ForecastDayPoint(BaseModel):
+    day_of_week: int
+    predicted_fullness: float
+
+
+class BusForecastResponse(BaseModel):
+    bus_id: int
+    stop_id: int
+    hourly: list[ForecastPoint]
+    weekly: list[ForecastDayPoint]

@@ -109,6 +109,50 @@ struct BusPredictionResponse {
     message: String,
 }
 
+#[derive(Serialize, Deserialize, Clone, Debug)]
+struct RouteStopResponse {
+    id: i64,
+    name: String,
+    latitude: f64,
+    longitude: f64,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+struct RouteBusResponse {
+    id: i64,
+    bus_number: String,
+    capacity: i32,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+struct RouteResponse {
+    route_id: i64,
+    route_number: String,
+    route_name: String,
+    stops: Vec<RouteStopResponse>,
+    buses: Vec<RouteBusResponse>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+struct ForecastPoint {
+    hour_of_day: i32,
+    predicted_fullness: f64,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+struct ForecastDayPoint {
+    day_of_week: i32,
+    predicted_fullness: f64,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+struct BusForecastResponse {
+    bus_id: i64,
+    stop_id: i64,
+    hourly: Vec<ForecastPoint>,
+    weekly: Vec<ForecastDayPoint>,
+}
+
 // -----------------------------------------------------------------------
 // Internal HTTP helpers (used by both Tauri commands and the background
 // location watcher)
@@ -300,6 +344,36 @@ async fn get_bus_prediction(bus_id: i64, stop_id: i64) -> Result<BusPredictionRe
 }
 
 #[tauri::command]
+async fn get_routes() -> Result<Vec<RouteResponse>, String> {
+    let client = reqwest::Client::new();
+    let res = client
+        .get(format!("{API_BASE_URL}/api/routes"))
+        .send()
+        .await
+        .map_err(|e| format!("Could not reach backend at {API_BASE_URL}: {e}"))?;
+
+    res.json::<Vec<RouteResponse>>()
+        .await
+        .map_err(|e| format!("Backend returned an unexpected routes response: {e}"))
+}
+
+#[tauri::command]
+async fn get_bus_forecast(bus_id: i64, stop_id: i64) -> Result<BusForecastResponse, String> {
+    let client = reqwest::Client::new();
+    let res = client
+        .get(format!(
+            "{API_BASE_URL}/api/bus/{bus_id}/forecast?stop_id={stop_id}"
+        ))
+        .send()
+        .await
+        .map_err(|e| format!("Could not reach backend at {API_BASE_URL}: {e}"))?;
+
+    res.json::<BusForecastResponse>()
+        .await
+        .map_err(|e| format!("Backend returned an unexpected forecast response: {e}"))
+}
+
+#[tauri::command]
 async fn send_user_notification(
     app: AppHandle,
     title: String,
@@ -349,6 +423,8 @@ pub fn run() {
             submit_crowd_report,
             get_bus_status,
             get_bus_prediction,
+            get_routes,
+            get_bus_forecast,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

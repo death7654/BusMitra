@@ -9,6 +9,7 @@ from .schemas import HealthResponse
 from .routers import tracking
 from .routers import bus
 from .routers import prediction
+from .routers import routes as routes_router
 
 # Create database tables
 Base.metadata.create_all(bind=engine)
@@ -62,3 +63,4 @@ def health_check(db: Session = Depends(get_db)):
 app.include_router(crowd.router)
 app.include_router(bus.router)
 app.include_router(prediction.router)
+app.include_router(routes_router.router)
