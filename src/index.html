@@ -3,67 +3,104 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Tauri App</title>
+    <title>CrowdSense</title>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script type="module" src="/main.js" defer></script>
   </head>
 
   <body>
-    <main class="container">
-      <h1>Welcome to Tauri</h1>
+    <div class="app">
+      <aside class="sidebar">
+        <div class="logo">crowd<span>sense</span></div>
+        <nav class="nav">
+          <a class="active">&#9673; <span>Dashboard</span></a>
+          <a>&#9121; <span>Routes</span></a>
+          <a>&#9655; <span>Predictions</span></a>
+          <a>&#9637; <span>Analytics</span></a>
+          <a>&#9881; <span>Settings</span></a>
+        </nav>
 
-      <div class="row">
-        <a href="https://tauri.app" target="_blank">
-          <img src="/assets/tauri.svg" class="logo tauri" alt="Tauri logo" />
-        </a>
-        <a
-          href="https://developer.mozilla.org/en-US/docs/Web/JavaScript"
-          target="_blank"
-        >
-          <img
-            src="/assets/javascript.svg"
-            class="logo vanilla"
-            alt="JavaScript logo"
-          />
-        </a>
-      </div>
-      <p>Click on the Tauri logo to learn more about the framework</p>
+        <div class="tracking-panel">
+          <h4>My live tracking</h4>
+          <div class="tracking-row"><span>Position</span><b id="my-coords">&mdash;</b></div>
+          <div class="tracking-row"><span>Speed</span><b id="my-speed">&mdash;</b></div>
+          <div id="my-match-wrap"></div>
+          <button class="track-btn" id="track-btn">Enable live tracking</button>
+        </div>
 
-      <form class="row" id="greet-form">
-        <input id="greet-input" placeholder="Enter a name..." />
-        <button type="submit">Greet</button>
-      </form>
-      <p id="greet-msg"></p>
+        <div class="online" id="online-panel">
+          <span class="dot" id="online-dot"></span><span id="online-text">Checking backend&hellip;</span>
+        </div>
+      </aside>
 
-      <button id="testgeo">test GeoLocation</button>
-      <p id="coords-display">lat: —, lon: —</p>
-      <p id="speed-display">speed: —</p>
+      <main class="main">
+        <div class="top">
+          <div>
+            <div class="eyebrow">Smart transit intelligence</div>
+            <h1>Know your bus before you board.</h1>
+            <div class="subtitle">Choose your journey and compare every available bus by crowd level and prediction confidence.</div>
+          </div>
+          <div class="profile">R</div>
+        </div>
 
-      <button id="testnotif">Test Notification</button>
+        <div class="search">
+          <div class="field"><small>Starting location</small><select id="from"></select></div>
+          <div class="field"><small>Destination</small><select id="to"></select></div>
+          <button class="btn" id="predict">Predict buses &rarr;</button>
+        </div>
+        <div class="notice" id="notice"></div>
 
-      <hr />
+        <div class="route-count"><span><b id="count">0</b> buses available for this journey</span><span>Sorted by distance to your stop</span></div>
 
-      <h2>Bus Crowd Status</h2>
-      <form class="row" id="bus-status-form">
-        <input id="bus-id-input" type="number" min="1" value="1" placeholder="Bus ID" />
-        <button type="submit">Check Crowd</button>
-      </form>
-      <p id="bus-status-display">No bus checked yet.</p>
+        <div class="card map-card">
+          <div class="card-title"><h2>Live map</h2><span class="tag" id="map-tag">Waiting for GPS&hellip;</span></div>
+          <div id="live-map" class="live-map"></div>
+        </div>
 
-      <div class="row">
-        <button id="checkin-btn">Check In To This Bus</button>
-        <select id="crowd-level-input">
-          <option value="1">1 - Very Low</option>
-          <option value="2">2 - Low</option>
-          <option value="3" selected>3 - Moderate</option>
-          <option value="4">4 - High</option>
-          <option value="5">5 - Very High</option>
-        </select>
-        <button id="report-btn">Report Crowd Level</button>
-      </div>
-      <p id="action-status"></p>
+        <div class="layout">
+          <section class="card">
+            <div class="card-title"><h2>Available buses</h2><span class="tag">Live + ML prediction</span></div>
+            <div class="bus-list" id="bus-list"><div class="empty">Pick a starting location and destination, then hit Predict buses.</div></div>
+          </section>
 
-      <p id="live-ping-display">Live GPS pings: waiting for location updates...</p>
-    </main>
+          <section>
+            <div class="card">
+              <div class="card-title"><h2>Selected route prediction</h2><span class="tag" id="selected-tag">Select a bus</span></div>
+              <div class="gauge-card">
+                <div class="gauge" id="gauge"><div class="gauge-content"><b id="gauge-pct">&mdash;</b><span>OCCUPANCY</span></div></div>
+                <div>
+                  <div class="level" id="level">No route selected</div>
+                  <div class="detail" id="detail">Select a bus from the list to inspect its prediction and history.</div>
+                  <div class="next"><b>Distance to your stop</b><span id="next">&mdash;</span></div>
+                  <div class="next next-sub"><b>Estimated arrival</b><span id="next-eta">&mdash;</span></div>
+                </div>
+              </div>
+              <div class="recommend" id="recommend"><b>&#128161; Smart recommendation</b><br><span id="recommend-text">Pick a route to see the best travel option.</span></div>
+            </div>
+
+            <div class="card history">
+              <div class="card-title"><h2>Route forecast</h2><span class="tag" id="history-tag">Select a route</span></div>
+              <div class="history-grid">
+                <div class="history-box"><h3>Crowding through the day</h3><div class="bars" id="time-bars"></div></div>
+                <div class="history-box"><h3>Crowding by day of week</h3><div class="days" id="days"></div></div>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <div class="card" style="margin-top:18px">
+          <div class="card-title"><h2>Today's crowd forecast</h2><span class="tag" id="forecast-tag">Select a route</span></div>
+          <div class="chart-wrap"><canvas id="chart"></canvas></div>
+        </div>
+
+        <div class="bottom">
+          <div class="insight"><strong>&#129504; What's driving this estimate</strong><p id="pattern">Select a route to see how its number is calculated.</p></div>
+          <div class="insight"><strong>&#127919; How to read the numbers</strong><p id="confidence-info">The prediction blends live GPS/report data with an ML forecast &mdash; there's no separate confidence score, so treat both halves as estimates.</p></div>
+          <div class="insight"><strong>&#128678; Better choice</strong><p id="better">Compare the available buses above instead of assuming the fastest bus is the best one.</p></div>
+        </div>
+      </main>
+    </div>
   </body>
 </html>
