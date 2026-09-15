@@ -66,4 +66,12 @@ def get_bus_status(
         manual_fullness=crowd_data["manual_fullness"],
         overall_fullness=crowd_data["overall_fullness"],
         report_count=crowd_data["report_count"],
+
+        # Attribution: how much of the number above came from phones
+        # aboard versus riders' own reports, and which way it's moving.
+        reporter_count=crowd_data["reporter_count"],
+        passenger_weight=crowd_data["passenger_weight"],
+        report_weight=crowd_data["report_weight"],
+        crowd_source=crowd_data["crowd_source"],
+        trend=crowd_data["trend"],
     )

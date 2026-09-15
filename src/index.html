@@ -8,99 +8,215 @@
     <title>CrowdSense</title>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script type="module" src="/main.js" defer></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.13.1/font/bootstrap-icons.min.css">
   </head>
 
   <body>
     <div class="app">
-      <aside class="sidebar">
+      <header class="topbar">
         <div class="logo">crowd<span>sense</span></div>
-        <nav class="nav">
-          <a class="active">&#9673; <span>Dashboard</span></a>
-          <a>&#9121; <span>Routes</span></a>
-          <a>&#9655; <span>Predictions</span></a>
-          <a>&#9637; <span>Analytics</span></a>
-          <a>&#9881; <span>Settings</span></a>
-        </nav>
-
-        <div class="tracking-panel">
-          <h4>My live tracking</h4>
-          <div class="tracking-row"><span>Position</span><b id="my-coords">&mdash;</b></div>
-          <div class="tracking-row"><span>Speed</span><b id="my-speed">&mdash;</b></div>
-          <div id="my-match-wrap"></div>
-          <button class="track-btn" id="track-btn">Enable live tracking</button>
+        <div class="status-cluster">
+          <div class="online" id="online-panel"><span class="dot" id="online-dot"></span><span id="online-text">Checking backend&hellip;</span></div>
+          <div class="stamp" id="refresh-stamp">Not updated yet</div>
         </div>
+        <button class="refresh-btn" id="refresh-btn" title="Refresh now" aria-label="Refresh now">
+          <i class="bi bi-arrow-clockwise"></i>
+        </button>
+      </header>
 
-        <div class="online" id="online-panel">
-          <span class="dot" id="online-dot"></span><span id="online-text">Checking backend&hellip;</span>
-        </div>
-      </aside>
+      <!-- Sits above every page, not inside one, so simulated numbers
+           can never be read as real no matter which screen you're on. -->
+      <div class="demo-banner" id="demo-banner">
+        <i class="bi bi-cone-striped"></i>
+        <span id="demo-banner-text">Demo mode &mdash; all crowd data on screen is simulated</span>
+      </div>
 
-      <main class="main">
-        <div class="top">
-          <div>
+      <main class="pages">
+
+        <!-- ============ PREDICT (default page) ============ -->
+        <section class="page active" data-page="predict">
+          <div class="page-head">
             <div class="eyebrow">Smart transit intelligence</div>
             <h1>Know your bus before you board.</h1>
-            <div class="subtitle">Choose your journey and compare every available bus by crowd level and prediction confidence.</div>
           </div>
-          <div class="profile">R</div>
-        </div>
 
-        <div class="search">
-          <div class="field"><small>Starting location</small><select id="from"></select></div>
-          <div class="field"><small>Destination</small><select id="to"></select></div>
-          <button class="btn" id="predict">Predict buses &rarr;</button>
-        </div>
-        <div class="notice" id="notice"></div>
+          <div class="search">
+            <div class="field"><small>Starting location</small><select id="from"></select></div>
+            <div class="field"><small>Destination</small><select id="to"></select></div>
+            <button class="btn" id="predict">Predict buses &rarr;</button>
+          </div>
+          <div class="notice" id="notice"></div>
 
-        <div class="route-count"><span><b id="count">0</b> buses available for this journey</span><span>Sorted by distance to your stop</span></div>
+          <label class="toggle-row">
+            <input type="checkbox" id="auto-refresh" checked />
+            <span>Keep these numbers updating on their own</span>
+          </label>
 
-        <div class="card map-card">
-          <div class="card-title"><h2>Live map</h2><span class="tag" id="map-tag">Waiting for GPS&hellip;</span></div>
-          <div id="live-map" class="live-map"></div>
-        </div>
+          <div class="route-count"><span><b id="count">0</b> buses available</span><span>Soonest first</span></div>
 
-        <div class="layout">
-          <section class="card">
-            <div class="card-title"><h2>Available buses</h2><span class="tag">Live + ML prediction</span></div>
-            <div class="bus-list" id="bus-list"><div class="empty">Pick a starting location and destination, then hit Predict buses.</div></div>
-          </section>
+          <div class="bus-list" id="bus-list"><div class="empty">Pick a starting location and destination, then hit Predict buses.</div></div>
+        </section>
 
-          <section>
-            <div class="card">
-              <div class="card-title"><h2>Selected route prediction</h2><span class="tag" id="selected-tag">Select a bus</span></div>
-              <div class="gauge-card">
-                <div class="gauge" id="gauge"><div class="gauge-content"><b id="gauge-pct">&mdash;</b><span>OCCUPANCY</span></div></div>
-                <div>
-                  <div class="level" id="level">No route selected</div>
-                  <div class="detail" id="detail">Select a bus from the list to inspect its prediction and history.</div>
-                  <div class="next"><b>Distance to your stop</b><span id="next">&mdash;</span></div>
-                  <div class="next next-sub"><b>Estimated arrival</b><span id="next-eta">&mdash;</span></div>
-                </div>
+        <!-- ============ MAP ============ -->
+        <section class="page" data-page="map">
+          <div class="tracking-panel">
+            <h4>My live tracking</h4>
+            <div class="tracking-row"><span>Position</span><b id="my-coords">&mdash;</b></div>
+            <div class="tracking-row"><span>Speed</span><b id="my-speed">&mdash;</b></div>
+            <div id="my-match-wrap"></div>
+            <button class="track-btn" id="track-btn">Enable live tracking</button>
+            <button class="track-btn danger" id="checkout-btn" hidden>Check out of this bus</button>
+            <div class="action-msg" id="ride-msg"></div>
+          </div>
+
+          <div class="card map-card">
+            <div class="card-title"><h2>Live map</h2><span class="tag" id="map-tag">Waiting for GPS&hellip;</span></div>
+            <div id="live-map" class="live-map"></div>
+          </div>
+        </section>
+
+        <!-- ============ PREDICTION (selected bus detail) ============ -->
+        <section class="page" data-page="prediction">
+          <div class="card">
+            <div class="card-title"><h2>Selected route prediction</h2><span class="tag" id="selected-tag">Select a bus</span></div>
+            <div class="gauge-card">
+              <div class="gauge" id="gauge"><div class="gauge-content"><b id="gauge-pct">&mdash;</b><span>OCCUPANCY</span></div></div>
+              <div>
+                <div class="level" id="level">No route selected</div>
+                <div class="detail" id="detail">Select a bus from Predict to inspect its prediction.</div>
+                <div class="next"><b>Distance to your stop</b><span id="next">&mdash;</span></div>
+                <div class="next next-sub"><b>Estimated arrival</b><span id="next-eta">&mdash;</span></div>
+                <div class="next next-sub"><b>Based on</b><span id="crowd-source">&mdash;</span></div>
               </div>
-              <div class="recommend" id="recommend"><b>&#128161; Smart recommendation</b><br><span id="recommend-text">Pick a route to see the best travel option.</span></div>
             </div>
+            <div class="recommend" id="recommend"><b>&#128161; Smart recommendation</b><br><span id="recommend-text">Pick a route to see the best travel option.</span></div>
+          </div>
+        </section>
 
-            <div class="card history">
-              <div class="card-title"><h2>Route forecast</h2><span class="tag" id="history-tag">Select a route</span></div>
-              <div class="history-grid">
-                <div class="history-box"><h3>Crowding through the day</h3><div class="bars" id="time-bars"></div></div>
-                <div class="history-box"><h3>Crowding by day of week</h3><div class="days" id="days"></div></div>
-              </div>
+        <!-- ============ FORECAST ============ -->
+        <section class="page" data-page="forecast">
+          <div class="card history">
+            <div class="card-title"><h2>Route forecast</h2><span class="tag" id="history-tag">Select a route</span></div>
+            <div class="history-grid">
+              <div class="history-box"><h3>Crowding through the day</h3><div class="bars" id="time-bars"></div></div>
+              <div class="history-box"><h3>Crowding by day of week</h3><div class="days" id="days"></div></div>
             </div>
-          </section>
-        </div>
+          </div>
 
-        <div class="card" style="margin-top:18px">
-          <div class="card-title"><h2>Today's crowd forecast</h2><span class="tag" id="forecast-tag">Select a route</span></div>
-          <div class="chart-wrap"><canvas id="chart"></canvas></div>
-        </div>
+          <div class="card">
+            <div class="card-title"><h2>Today's crowd forecast</h2><span class="tag" id="forecast-tag">Select a route</span></div>
+            <div class="chart-wrap"><canvas id="chart"></canvas></div>
+          </div>
+        </section>
 
-        <div class="bottom">
+        <!-- ============ INSIGHTS ============ -->
+        <section class="page" data-page="insights">
           <div class="insight"><strong>&#129504; What's driving this estimate</strong><p id="pattern">Select a route to see how its number is calculated.</p></div>
-          <div class="insight"><strong>&#127919; How to read the numbers</strong><p id="confidence-info">The prediction blends live GPS/report data with an ML forecast &mdash; there's no separate confidence score, so treat both halves as estimates.</p></div>
-          <div class="insight"><strong>&#128678; Better choice</strong><p id="better">Compare the available buses above instead of assuming the fastest bus is the best one.</p></div>
-        </div>
+          <div class="insight"><strong>&#127919; How to read the numbers</strong><p id="confidence-info">Select a route to see how much of its number was measured and how much was forecast.</p></div>
+          <div class="insight"><strong>&#128678; Better choice</strong><p id="better">Compare the available buses on Predict instead of assuming the fastest bus is the best one.</p></div>
+        </section>
+
+        <!-- ============ BOARD (live arrivals at one stop) ============ -->
+        <section class="page" data-page="board">
+          <div class="page-head">
+            <div class="eyebrow">Live arrivals</div>
+            <h1>What's coming to your stop.</h1>
+          </div>
+
+          <div class="field">
+            <small>Stop</small>
+            <select id="board-stop"></select>
+          </div>
+
+          <label class="toggle-row">
+            <input type="checkbox" id="board-include-unknown" />
+            <span>Also show buses with no live estimate</span>
+          </label>
+
+          <div class="route-count">
+            <span id="board-summary">Pick a stop</span>
+            <span id="board-updated">&mdash;</span>
+          </div>
+
+          <div class="board-list" id="board-list">
+            <div class="empty">Choose a stop to see live arrivals.</div>
+          </div>
+        </section>
+
+        <!-- ============ MANAGE (fleet + demo mode) ============ -->
+        <section class="page" data-page="manage">
+
+          <!-- ---- Demo mode ---- -->
+          <div class="card">
+            <div class="card-title"><h2>Demo mode</h2><span class="tag" id="demo-tag">Checking&hellip;</span></div>
+            <p class="card-note" id="demo-message">
+              Simulated buses drive their real routes and generate riders, so the
+              app has something to show without live passengers. Everything it
+              writes is tagged and removed when you stop.
+            </p>
+            <div class="bus-actions">
+              <button class="action-btn" id="demo-toggle" disabled>Start demo mode</button>
+              <button class="action-btn secondary" id="demo-reset">Clear simulated data</button>
+            </div>
+            <div class="action-msg" id="demo-msg"></div>
+            <div class="sim-list" id="demo-buses"></div>
+          </div>
+
+          <!-- ---- Add a bus ---- -->
+          <div class="card">
+            <div class="card-title"><h2>Add a bus</h2><span class="tag">Fleet</span></div>
+            <div class="form-grid">
+              <label class="form-field">
+                <small>Route</small>
+                <select id="new-bus-route"></select>
+              </label>
+              <label class="form-field">
+                <small>Bus number</small>
+                <input id="new-bus-number" type="text" placeholder="BUS-101-C" maxlength="20" autocapitalize="characters" />
+              </label>
+              <label class="form-field">
+                <small>Capacity (seats + standing)</small>
+                <input id="new-bus-capacity" type="number" min="1" max="300" value="50" />
+              </label>
+            </div>
+            <button class="action-btn" id="add-bus-btn">Add bus to fleet</button>
+            <div class="action-msg" id="add-bus-msg"></div>
+          </div>
+
+          <!-- ---- Admin token ---- -->
+          <div class="card">
+            <div class="card-title"><h2>Admin token</h2><span class="tag">Required to delete</span></div>
+            <p class="card-note">
+              Deleting a bus needs the token set in <code>BUSMITRA_ADMIN_TOKEN</code>
+              on the server. It's kept in memory for this session only &mdash; never
+              written to disk.
+            </p>
+            <label class="form-field">
+              <small>X-Admin-Token</small>
+              <input id="admin-token" type="password" placeholder="Paste admin token" autocomplete="off" />
+            </label>
+          </div>
+
+          <!-- ---- Fleet list ---- -->
+          <div class="card">
+            <div class="card-title"><h2>Fleet</h2><span class="tag" id="fleet-tag">&mdash;</span></div>
+            <div class="action-msg" id="fleet-msg"></div>
+            <div id="fleet-list"><div class="empty">Loading fleet&hellip;</div></div>
+          </div>
+
+        </section>
+
       </main>
+
+      <nav class="tabbar">
+        <button class="tab active" data-page="predict"><span class="tab-icon"><i class="bi bi-search"></i></span><span>Predict</span></button>
+        <button class="tab" data-page="map"><span class="tab-icon"><i class="bi bi-map"></i></span><span>Map</span></button>
+        <button class="tab" data-page="prediction"><span class="tab-icon"><i class="bi bi-bar-chart-line"></i></span><span>Prediction</span></button>
+        <button class="tab" data-page="forecast"><span class="tab-icon"><i class="bi bi-calendar-event"></i></span><span>Forecast</span></button>
+        <button class="tab" data-page="insights"><span class="tab-icon"><i class="bi bi-lightbulb"></i></span><span>Insights</span></button>
+        <button class="tab" data-page="board"><span class="tab-icon"><i class="bi bi-signpost-split"></i></span><span>Board</span></button>
+        <button class="tab" data-page="manage"><span class="tab-icon"><i class="bi bi-sliders"></i></span><span>Manage</span></button>
+      </nav>
     </div>
   </body>
 </html>
