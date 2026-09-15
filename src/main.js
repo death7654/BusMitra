@@ -543,8 +543,8 @@ function checkArrivalAlarms() {
 // screen. This keeps the last known good state so the app opens with
 // something, clearly marked as old rather than presented as current.
 // ---------------------------------------------------------------------
-const CACHE_KEY = "crowdsense:snapshot:v1";
-const ALARM_KEY = "crowdsense:alarms:v1";
+const CACHE_KEY = "BusMitra:snapshot:v1";
+const ALARM_KEY = "BusMitra:alarms:v1";
 
 // Past this, cached figures are archaeology and showing them would be
 // worse than showing nothing.

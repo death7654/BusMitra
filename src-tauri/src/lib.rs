@@ -16,9 +16,9 @@ use tauri::{AppHandle, Emitter, Manager};
 // 10.0.2.2, not 127.0.0.1 - swap the constant below when testing on it.
 // Physical device: use your machine's LAN IP (e.g. http://192.168.x.x:8000)
 // and make sure the phone is on the same network.
- const API_BASE_URL: &str = "http://10.0.2.2:8000";
+//  const API_BASE_URL: &str = "http://10.0.2.2:8000";
 
-// const API_BASE_URL: &str = "http://192.168.137.1:8000";
+const API_BASE_URL: &str = "http://192.168.137.1:8000";
 
 // -----------------------------------------------------------------------
 // App state
@@ -806,7 +806,6 @@ async fn send_user_notification(
     Ok(())
 }
 
-#[cfg_attr(mobile, tauri::mobile_entry_point)]
 // -----------------------------------------------------------------------
 // Batch fleet status
 // -----------------------------------------------------------------------
@@ -958,6 +957,7 @@ async fn plan_journey(
 
     json_or_error::<JourneyPlanResponse>(res, "journey plan").await
 }
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
 
 pub fn run() {
     tauri::Builder::default()
