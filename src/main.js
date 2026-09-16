@@ -1933,8 +1933,9 @@ function resetSelectedPanels() {
   detailEl.textContent = "Select a bus from the list to inspect its prediction and history.";
   nextEl.textContent = "\u2014";
   nextEtaEl.textContent = "\u2014";
-  crowdSourceEl.textContent = "\u2014";
-  recommendTextEl.textContent = "Pick a route to see the best travel option.";
+  if (crowdSourceEl) {
+  crowdSourceEl.textContent = "—";
+}  recommendTextEl.textContent = "Pick a route to see the best travel option.";
   patternEl.textContent = "Select a route to see how its number is calculated.";
   if (confidenceInfoEl) {
     confidenceInfoEl.textContent =
@@ -1975,7 +1976,9 @@ function renderSelected() {
       : "No live position";
 
   nextEtaEl.textContent = c.eta ? etaHeadline(c.eta) : "No estimate";
+  if (crowdSourceEl) {
   crowdSourceEl.textContent = crowdSourceLabel(status);
+}
 
   // Spell out both signals *and* how much each was trusted, since the
   // blend is now weighted by evidence rather than a fixed 50/50.
