@@ -153,7 +153,11 @@ body.stale .stamp{color:var(--yellow)}
 
 /* ---------- Map ---------- */
 .map-card{margin-bottom:0}
-.live-map{height:52vh;min-height:280px;border-radius:var(--r-md);overflow:hidden;background:var(--bg);border:1px solid var(--line)}
+/* isolation:isolate boxes in Leaflet's internal pane z-indices (tiles,
+   markers, popups run up to 600-700) so they can't leak out and out-rank
+   the drawer/backdrop, which sit much lower in the app's own stacking
+   order but still need to paint above every page's content. */
+.live-map{height:52vh;min-height:280px;border-radius:var(--r-md);overflow:hidden;background:var(--bg);border:1px solid var(--line);isolation:isolate}
 .live-map .leaflet-tile-pane{filter:saturate(0.85) brightness(0.92)}
 .live-map .leaflet-control-attribution{background:#0a1219cc;color:var(--muted);font-size:9px}
 .live-map .leaflet-control-attribution a{color:var(--cyan)}
@@ -202,22 +206,60 @@ body.stale .stamp{color:var(--yellow)}
 .insight p{font-size:12.5px;color:var(--muted);line-height:1.55;margin:9px 0 0}
 
 /* ---------- Bottom tab bar ---------- */
+/* Four items only: the screens people hit constantly (Predict, Map,
+   Board) plus a single "More" entry point to the drawer below. Cramming
+   all seven destinations in here was the original complaint. */
 .tabbar{
   flex:0 0 auto;display:flex;
   border-top:1px solid var(--line);
   background:var(--bg);
+  position:relative;z-index:10;
 }
 .tab{
   flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;gap:4px;
   padding:11px 2px 9px;background:none;border:0;border-top:2px solid transparent;color:var(--muted);
-  font-size:9px;font-family:"DM Sans",sans-serif;cursor:pointer;margin-top:-1px;
+  font-size:10px;font-family:"DM Sans",sans-serif;cursor:pointer;margin-top:-1px;
 }
-/* Seven tabs in a 480px shell leaves ~68px each - clip rather than wrap,
-   so one long label can't make the whole bar two lines tall. */
 .tab>span:last-child{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.tab-icon{font-size:15px;line-height:1;opacity:.8}
+.tab-icon{font-size:16px;line-height:1;opacity:.8}
 .tab.active{color:var(--cyan);border-top-color:var(--cyan)}
 .tab.active .tab-icon{opacity:1}
+
+/* ---------- More drawer ---------- */
+/* A bottom sheet for the four less-visited screens, so the tab bar
+   stays uncluttered. Built from the same .card/.tab visual language as
+   the rest of the app rather than introducing a new pattern. */
+.drawer-backdrop{
+  position:absolute;inset:0;z-index:40;
+  background:rgba(4,8,11,.55);
+  opacity:0;pointer-events:none;transition:opacity .18s ease;
+}
+.drawer-backdrop.show{opacity:1;pointer-events:auto}
+
+.drawer{
+  position:absolute;left:0;right:0;bottom:0;z-index:50;
+  background:var(--panel);border:1px solid var(--line);border-bottom:0;
+  border-radius:18px 18px 0 0;
+  padding:10px 20px calc(20px + env(safe-area-inset-bottom,0px));
+  transform:translateY(100%);transition:transform .22s ease;
+  box-shadow:0 -12px 30px rgba(0,0,0,.35);
+}
+.drawer.open{transform:translateY(0)}
+.drawer-handle{width:36px;height:4px;border-radius:4px;background:var(--line);margin:2px auto 14px}
+.drawer-title{font:600 12px "Space Grotesk";color:var(--muted);letter-spacing:.02em;text-transform:uppercase;margin-bottom:14px}
+.drawer-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+.drawer-item{
+  flex-direction:row !important;justify-content:flex-start;align-items:center;gap:10px !important;
+  border:1px solid var(--line);border-radius:var(--r-md);
+  padding:14px 12px !important;margin-top:0;color:var(--text);font-size:13px !important;
+}
+.drawer-item .tab-icon{font-size:17px;color:var(--cyan);opacity:1}
+.drawer-item.active{border-color:var(--cyan);color:var(--cyan)}
+
+@media(prefers-reduced-motion:reduce){
+  .drawer{transition:none}
+  .drawer-backdrop{transition:none}
+}
 
 /* ---------- Slightly wider screens: give the phone shell some breathing room ---------- */
 @media(min-width:481px){

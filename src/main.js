@@ -651,14 +651,23 @@ function restoreAlarms() {
 // Page navigation (bottom tab bar). Only one <section class="page"> is
 // visible at a time so each screen fits with minimal scrolling.
 // ---------------------------------------------------------------------
+// Pages reachable only through the "More" drawer rather than a primary
+// tab. The drawer's own tab button (id="more-tab") lights up whenever
+// one of these is the active page, so the bar still shows *something*
+// is selected instead of going dark.
+const DRAWER_PAGES = new Set(["prediction", "forecast", "insights", "manage"]);
+let moreTabEl, drawerEl, drawerBackdropEl;
+
 function showPage(name) {
   pageEls.forEach((el) => el.classList.toggle("active", el.dataset.page === name));
   tabEls.forEach((el) => el.classList.toggle("active", el.dataset.page === name));
+  if (moreTabEl) moreTabEl.classList.toggle("active", DRAWER_PAGES.has(name));
   // The map is only ever measured correctly once its container is
   // actually visible, so re-measure it right after we reveal it.
   if (name === "map" && map) setTimeout(() => map.invalidateSize(), 0);
 
   currentPage = name;
+  closeDrawer();
 
   // Arriving on a screen is exactly when its numbers matter most, so
   // fetch immediately rather than waiting out the interval. The loop
@@ -667,11 +676,38 @@ function showPage(name) {
   refreshCurrentPage({ manual: true });
 }
 
+function openDrawer() {
+  if (!drawerEl) return;
+  drawerEl.classList.add("open");
+  drawerBackdropEl.classList.add("show");
+  drawerEl.setAttribute("aria-hidden", "false");
+}
+function closeDrawer() {
+  if (!drawerEl) return;
+  drawerEl.classList.remove("open");
+  drawerBackdropEl.classList.remove("show");
+  drawerEl.setAttribute("aria-hidden", "true");
+}
+
 function setupNavigation() {
   pageEls = [...document.querySelectorAll(".page")];
   tabEls = [...document.querySelectorAll(".tab")];
   tabEls.forEach((tab) => {
+    // The "More" tab has no data-page of its own - it opens the drawer
+    // instead of switching pages directly.
+    if (tab.id === "more-tab") return;
     tab.addEventListener("click", () => showPage(tab.dataset.page));
+  });
+
+  moreTabEl = document.getElementById("more-tab");
+  drawerEl = document.getElementById("more-drawer");
+  drawerBackdropEl = document.getElementById("drawer-backdrop");
+  moreTabEl?.addEventListener("click", () => {
+    drawerEl.classList.contains("open") ? closeDrawer() : openDrawer();
+  });
+  drawerBackdropEl?.addEventListener("click", closeDrawer);
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") closeDrawer();
   });
 }
 

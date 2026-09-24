@@ -229,14 +229,30 @@
 
       </main>
 
+      <!-- Backdrop for the "More" drawer. Sits above everything, below the
+           drawer itself; a tap anywhere on it closes the drawer. -->
+      <div class="drawer-backdrop" id="drawer-backdrop"></div>
+
+      <!-- More drawer: the four less-frequently-visited screens live here
+           instead of crowding the tab bar. Each entry keeps the same
+           .tab / data-page contract as the primary tabs, so the existing
+           navigation wiring (setupNavigation/showPage) needs no rework. -->
+      <div class="drawer" id="more-drawer" aria-hidden="true">
+        <div class="drawer-handle"></div>
+        <div class="drawer-title">More</div>
+        <div class="drawer-grid">
+          <button class="tab drawer-item" data-page="prediction"><span class="tab-icon"><i class="bi bi-bar-chart-line"></i></span><span>Prediction</span></button>
+          <button class="tab drawer-item" data-page="forecast"><span class="tab-icon"><i class="bi bi-calendar-event"></i></span><span>Forecast</span></button>
+          <button class="tab drawer-item" data-page="insights"><span class="tab-icon"><i class="bi bi-lightbulb"></i></span><span>Insights</span></button>
+          <button class="tab drawer-item" data-page="manage"><span class="tab-icon"><i class="bi bi-sliders"></i></span><span>Manage</span></button>
+        </div>
+      </div>
+
       <nav class="tabbar">
         <button class="tab active" data-page="predict"><span class="tab-icon"><i class="bi bi-search"></i></span><span>Predict</span></button>
         <button class="tab" data-page="map"><span class="tab-icon"><i class="bi bi-map"></i></span><span>Map</span></button>
-        <button class="tab" data-page="prediction"><span class="tab-icon"><i class="bi bi-bar-chart-line"></i></span><span>Prediction</span></button>
-        <button class="tab" data-page="forecast"><span class="tab-icon"><i class="bi bi-calendar-event"></i></span><span>Forecast</span></button>
-        <button class="tab" data-page="insights"><span class="tab-icon"><i class="bi bi-lightbulb"></i></span><span>Insights</span></button>
         <button class="tab" data-page="board"><span class="tab-icon"><i class="bi bi-signpost-split"></i></span><span>Board</span></button>
-        <button class="tab" data-page="manage"><span class="tab-icon"><i class="bi bi-sliders"></i></span><span>Manage</span></button>
+        <button class="tab" id="more-tab"><span class="tab-icon"><i class="bi bi-grid-3x3-gap"></i></span><span>More</span></button>
       </nav>
     </div>
   </body>
