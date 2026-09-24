@@ -122,3 +122,4 @@ BUS_STATUS = "bus_status"      # a bus's crowd figure or position moved
 BUS_REMOVED = "bus_removed"    # a bus left the fleet
 FLEET_CHANGED = "fleet_changed"
 DEMO_CHANGED = "demo_changed"
+OUTAGE_REPORTED = "outage_reported"  # a bus crossed the outage threshold

@@ -14,11 +14,19 @@ use tauri::{AppHandle, Emitter, Manager};
 // running on the same machine.
 // Android emulator: the emulator's loopback to the host machine is
 // 10.0.2.2, not 127.0.0.1 - swap the constant below when testing on it.
-// Physical device: use your machine's LAN IP (e.g. http://192.168.x.x:8000)
-// and make sure the phone is on the same network.
-const API_BASE_URL: &str = "http://10.0.2.2:8000";
-
-//const API_BASE_URL: &str = "http://192.168.137.1:8000";
+// Physical device on the same LAN: use your machine's LAN IP
+// (e.g. http://192.168.x.x:8000).
+//
+// Once the backend is deployed somewhere other than this machine (see
+// the deployment notes in backend/README.md), set BUSMITRA_API_BASE_URL
+// at build time instead of editing this file, e.g.:
+//   BUSMITRA_API_BASE_URL=https://busmitra-api.fly.dev cargo tauri build
+// The fallback below is only used when that variable isn't set, so a
+// dev build with no env var still behaves exactly as before.
+const API_BASE_URL: &str = match option_env!("BUSMITRA_API_BASE_URL") {
+    Some(url) => url,
+    None => "http://10.0.2.2:8000",
+};
 
 // -----------------------------------------------------------------------
 // App state
@@ -208,6 +216,44 @@ struct StopBoardResponse {
     message: String,
 }
 
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+struct OutageStatus {
+    #[serde(default)]
+    reported_out_of_service: bool,
+    #[serde(default)]
+    outage_report_count: i32,
+    #[serde(default)]
+    outage_reasons: Vec<String>,
+    #[serde(default)]
+    last_outage_report_at: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+struct OutageReportResponse {
+    success: bool,
+    user_id: i64,
+    bus_id: i64,
+    reason: String,
+    message: String,
+    status: OutageStatus,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+struct WeatherResponse {
+    latitude: f64,
+    longitude: f64,
+    temperature_c: Option<f64>,
+    #[serde(default)]
+    precipitation_mm: f64,
+    wind_speed_kmh: Option<f64>,
+    #[serde(default)]
+    condition: String,
+    #[serde(default)]
+    condition_category: String,
+    advisory: Option<String>,
+    observed_at: Option<String>,
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 struct BusStatusResponse {
     bus_id: i64,
@@ -236,6 +282,8 @@ struct BusStatusResponse {
     crowd_source: String,
     #[serde(default)]
     trend: String,
+    #[serde(default)]
+    outage: OutageStatus,
 }
 
 /// The headline crowd figure, plus how it was arrived at.
@@ -692,6 +740,51 @@ async fn submit_crowd_report(
 }
 
 #[tauri::command]
+async fn submit_outage_report(
+    app: AppHandle,
+    bus_id: i64,
+    reason: String,
+) -> Result<OutageReportResponse, String> {
+    let user_id = app.state::<AppState>().user_id;
+    let client = reqwest::Client::new();
+    let res = client
+        .post(format!("{API_BASE_URL}/api/outage-report"))
+        .json(&serde_json::json!({
+            "user_id": user_id,
+            "bus_id": bus_id,
+            "reason": reason,
+        }))
+        .send()
+        .await
+        .map_err(|e| format!("Could not reach backend at {API_BASE_URL}: {e}"))?;
+
+    json_or_error::<OutageReportResponse>(res, "outage report").await
+}
+
+#[tauri::command]
+async fn get_weather(
+    latitude: Option<f64>,
+    longitude: Option<f64>,
+) -> Result<WeatherResponse, String> {
+    let client = reqwest::Client::new();
+    let mut request = client.get(format!("{API_BASE_URL}/api/weather"));
+
+    // Both or neither: the backend falls back to a known stop's
+    // coordinates when it gets no position at all, which is exactly
+    // what we want before GPS has produced a fix.
+    if let (Some(lat), Some(lon)) = (latitude, longitude) {
+        request = request.query(&[("latitude", lat.to_string()), ("longitude", lon.to_string())]);
+    }
+
+    let res = request
+        .send()
+        .await
+        .map_err(|e| format!("Could not reach backend at {API_BASE_URL}: {e}"))?;
+
+    json_or_error::<WeatherResponse>(res, "weather").await
+}
+
+#[tauri::command]
 async fn get_bus_eta(bus_id: i64, stop_id: i64) -> Result<EtaResponse, String> {
     let client = reqwest::Client::new();
     let res = client
@@ -843,6 +936,8 @@ struct BatchBusState {
     crowd_source: String,
     #[serde(default)]
     trend: String,
+    #[serde(default)]
+    outage: OutageStatus,
 
     // Absent when the request named no stop - neither an arrival nor a
     // stop-specific prediction means anything without one.
@@ -976,6 +1071,8 @@ pub fn run() {
             checkin_to_bus,
             checkout_from_bus,
             submit_crowd_report,
+            submit_outage_report,
+            get_weather,
             get_bus_status,
             get_bus_eta,
             get_stop_arrivals,

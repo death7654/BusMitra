@@ -17,6 +17,7 @@
         <div class="logo">Bus<span>Mitra</span></div>
         <div class="status-cluster">
           <div class="online" id="online-panel"><span class="dot" id="online-dot"></span><span id="online-text">Checking backend&hellip;</span></div>
+          <div class="weather-chip" id="weather-chip" title="Current weather"><i class="bi bi-cloud" id="weather-icon"></i><span id="weather-text">Weather &mdash;</span></div>
           <div class="stamp" id="refresh-stamp">Not updated yet</div>
         </div>
         <button class="refresh-btn" id="refresh-btn" title="Refresh now" aria-label="Refresh now">
@@ -39,6 +40,8 @@
             <div class="eyebrow">Smart transit intelligence</div>
             <h1>Know your bus before you board.</h1>
           </div>
+
+          <div class="weather-advisory" id="weather-advisory"><i class="bi bi-exclamation-triangle"></i><span id="weather-advisory-text"></span></div>
 
           <div class="search">
             <div class="field"><small>Starting location</small><select id="from"></select></div>
@@ -90,6 +93,24 @@
               </div>
             </div>
             <div class="recommend" id="recommend"><b>&#128161; Smart recommendation</b><br><span id="recommend-text">Pick a route to see the best travel option.</span></div>
+          </div>
+
+          <!-- ---- Outage reporting ---- -->
+          <div class="card outage-card">
+            <div class="card-title"><h2>Service status</h2><span class="tag" id="outage-tag">Select a bus</span></div>
+            <div class="outage-banner" id="outage-banner"></div>
+            <p class="card-note">Bus not showing up? Let other riders know. It only shows as reported once a second rider confirms it.</p>
+            <div class="report-row">
+              <select id="outage-reason">
+                <option value="not_running">Not running</option>
+                <option value="breakdown">Broken down</option>
+                <option value="never_arrived">Never arrived</option>
+                <option value="accident">Accident</option>
+                <option value="other">Other</option>
+              </select>
+              <button class="action-btn danger" id="outage-report-btn">Report this bus</button>
+            </div>
+            <div class="action-msg" id="outage-msg"></div>
           </div>
         </section>
 

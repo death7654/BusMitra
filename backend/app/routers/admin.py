@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from ..database import get_db
-from ..models import Bus, CheckIn, CrowdReport, Route, UserPing
+from ..models import Bus, CheckIn, CrowdReport, OutageReport, Route, UserPing
 from ..schemas import (
     BusCreateRequest,
     BusDeleteResponse,
@@ -330,8 +330,13 @@ def delete_bus(
         .filter(CrowdReport.bus_id == bus.id)
         .count()
     )
+    outage_count = (
+        db.query(OutageReport)
+        .filter(OutageReport.bus_id == bus.id)
+        .count()
+    )
 
-    total = ping_count + checkin_count + report_count
+    total = ping_count + checkin_count + report_count + outage_count
 
     if total > 0 and not force:
         raise HTTPException(
@@ -340,9 +345,10 @@ def delete_bus(
                 f"{bus.bus_number} has {total} historical record"
                 f"{'s' if total != 1 else ''} attached "
                 f"({ping_count} pings, {checkin_count} check-ins, "
-                f"{report_count} reports). These are training data for "
-                "the prediction model. Re-send with force=true to "
-                "delete the bus and all of it."
+                f"{report_count} reports, {outage_count} outage "
+                "reports). These are training data for the prediction "
+                "model. Re-send with force=true to delete the bus and "
+                "all of it."
             ),
         )
 

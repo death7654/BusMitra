@@ -76,6 +76,42 @@ class CrowdReportResponse(BaseModel):
     replaced_previous: bool = False
     next_report_in_seconds: int = 0
 
+class OutageReportRequest(BaseModel):
+    user_id: int = Field(..., gt=0)
+    bus_id: int = Field(..., gt=0)
+    reason: str = Field(default="not_running")
+
+    @field_validator("reason")
+    @classmethod
+    def normalise_reason(cls, value: str) -> str:
+        allowed = {"not_running", "breakdown", "never_arrived", "accident", "other"}
+        cleaned = (value or "not_running").strip().lower()
+        return cleaned if cleaned in allowed else "other"
+
+
+class OutageStatus(BaseModel):
+    """
+    Whether a bus currently reads as reported out of service, and by
+    how much. Embedded in BusStatusResponse and BatchBusState rather
+    than fetched separately, so a client already polling for crowd
+    figures gets this for free.
+    """
+
+    reported_out_of_service: bool = False
+    outage_report_count: int = 0
+    outage_reasons: list[str] = []
+    last_outage_report_at: datetime | None = None
+
+
+class OutageReportResponse(BaseModel):
+    success: bool
+    user_id: int
+    bus_id: int
+    reason: str
+    message: str
+    status: OutageStatus
+
+
 class BusStatusResponse(BaseModel):
     bus_id: int
     bus_number: str
@@ -100,6 +136,23 @@ class BusStatusResponse(BaseModel):
     report_weight: float = 0.0
     crowd_source: str = "none"
     trend: str = "unknown"
+
+    outage: OutageStatus = OutageStatus()
+
+
+class WeatherResponse(BaseModel):
+    latitude: float
+    longitude: float
+    temperature_c: float | None = None
+    precipitation_mm: float = 0.0
+    wind_speed_kmh: float | None = None
+    # "clear" | "clouds" | "fog" | "rain" | "snow" | "storm" | "unknown"
+    condition: str = "Unknown"
+    condition_category: str = "unknown"
+    # Plain-language note when the weather is likely to affect service,
+    # e.g. heavier crowding or slower buses. None in ordinary weather.
+    advisory: str | None = None
+    observed_at: str | None = None
 
 class BusPredictionResponse(BaseModel):
     bus_id: int
@@ -397,6 +450,8 @@ class BatchBusState(BaseModel):
     report_weight: float = 0.0
     crowd_source: str = "none"
     trend: str = "unknown"
+
+    outage: OutageStatus = OutageStatus()
 
     # Both absent when the request named no stop, since neither an
     # arrival nor a stop-specific prediction means anything without one.

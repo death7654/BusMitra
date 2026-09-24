@@ -21,6 +21,8 @@ from .routers import stream as stream_router
 from .routers import fleet_status as fleet_status_router
 from .routers import journeys as journeys_router
 from .routers import calibration as calibration_router
+from .routers import outage as outage_router
+from .routers import weather as weather_router
 from .services import demo as demo_service
 from .services import learning as learning_service
 from .services import observations as observation_service
@@ -280,3 +282,5 @@ app.include_router(fleet_status_router.router)
 app.include_router(stream_router.router)
 app.include_router(journeys_router.router)
 app.include_router(calibration_router.router)
+app.include_router(outage_router.router)
+app.include_router(weather_router.router)

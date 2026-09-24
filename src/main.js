@@ -69,6 +69,12 @@ let boardStops = [];      // flattened {id, name, route} across all routes
 let demoState = null;
 let demoPollTimer = null;
 
+// Weather
+let weatherData = null;
+let weatherLastFetchedAt = 0;
+const WEATHER_REFRESH_MS = 10 * 60 * 1000; // matches the backend's own cache TTL
+let lastKnownPosition = null; // {latitude, longitude} from live tracking, if any
+
 // DOM refs (filled in on DOMContentLoaded)
 let fromEl, toEl, predictBtn, noticeEl, countEl, busListEl;
 let selectedTagEl, gaugeEl, gaugePctEl, levelEl, detailEl, nextEl, nextEtaEl;
@@ -85,6 +91,8 @@ let boardStopEl, boardIncludeEl, boardListEl, boardSummaryEl, boardUpdatedEl;
 let crowdSourceEl;
 let refreshBtnEl, refreshStampEl, autoRefreshEl;
 let pageEls, tabEls;
+let weatherChipEl, weatherIconEl, weatherTextEl, weatherAdvisoryEl, weatherAdvisoryTextEl;
+let outageTagEl, outageBannerEl, outageReasonEl, outageReportBtnEl, outageMsgEl;
 
 // ---------------------------------------------------------------------
 // Auto-refresh
@@ -220,6 +228,11 @@ async function refreshCurrentPage({ manual = false } = {}) {
   // a second before uvicorn did, laptop asleep on the bus) there is
   // nothing else in the app that would ever try again.
   if (!routes.length) jobs.push(loadRoutes());
+
+  // Weather is cheap to check (guarded by its own timestamp, cached
+  // server-side too) so it rides along on every page's refresh rather
+  // than needing its own schedule.
+  jobs.push(maybeRefreshWeather());
 
   switch (currentPage) {
     case "predict":
@@ -868,6 +881,62 @@ const TREND_LABEL = { rising: "\u2191 filling up", falling: "\u2193 emptying", s
 // ping). No made-up numbers: if we don't have both a live distance and
 // a live, moving speed reading, we say so instead of guessing.
 // ---------------------------------------------------------------------
+// Weather
+// ---------------------------------------------------------------------
+// Fetched with whatever position live tracking has (falls back to the
+// backend's own default stop when GPS hasn't produced a fix yet), and
+// cached client-side for as long as the backend caches it server-side
+// - there's no point asking again before the answer could have moved.
+const WEATHER_ICON = {
+  clear: "bi-sun", clouds: "bi-cloud-sun", fog: "bi-cloud-fog2",
+  rain: "bi-cloud-rain", snow: "bi-cloud-snow", storm: "bi-cloud-lightning-rain",
+  unknown: "bi-cloud",
+};
+
+async function loadWeather() {
+  try {
+    const w = await invoke("get_weather", {
+      latitude: lastKnownPosition ? lastKnownPosition.latitude : null,
+      longitude: lastKnownPosition ? lastKnownPosition.longitude : null,
+    });
+    weatherData = w;
+    weatherLastFetchedAt = Date.now();
+    renderWeather();
+  } catch (err) {
+    // Weather is a nicety, not core function - a failed fetch here
+    // must never touch backendUp/markBackendDown or the bus list.
+    console.warn("weather fetch failed:", err);
+  }
+}
+
+function maybeRefreshWeather() {
+  if (Date.now() - weatherLastFetchedAt < WEATHER_REFRESH_MS) return Promise.resolve();
+  return loadWeather();
+}
+
+function renderWeather() {
+  if (!weatherData || !weatherChipEl) return;
+
+  const icon = WEATHER_ICON[weatherData.condition_category] || WEATHER_ICON.unknown;
+  weatherIconEl.className = `bi ${icon}`;
+  const temp = weatherData.temperature_c != null ? `${Math.round(weatherData.temperature_c)}\u00b0C` : "\u2014";
+  weatherTextEl.textContent = `${temp} \u00b7 ${esc(weatherData.condition)}`;
+
+  if (weatherAdvisoryEl) {
+    if (weatherData.advisory) {
+      weatherAdvisoryTextEl.textContent = weatherData.advisory;
+      weatherAdvisoryEl.classList.add("show");
+      weatherAdvisoryEl.classList.toggle(
+        "severe",
+        weatherData.condition_category === "storm" || weatherData.condition_category === "snow"
+      );
+    } else {
+      weatherAdvisoryEl.classList.remove("show");
+    }
+  }
+}
+
+// ---------------------------------------------------------------------
 // ---------------------------------------------------------------------
 // Backend data loading
 // ---------------------------------------------------------------------
@@ -1044,6 +1113,7 @@ function unpackBusState(c, state) {
     report_weight: state.report_weight,
     crowd_source: state.crowd_source,
     trend: state.trend,
+    outage: state.outage || emptyOutageStatus(),
   };
 
   let distance = null;
@@ -1270,11 +1340,16 @@ function renderList() {
         ? `<button class="action-btn danger" data-checkout="${c.bus.id}">Check out of this bus</button>`
         : `<button class="action-btn" data-checkin="${c.bus.id}">Check in to this bus</button>`;
 
+      const outageBadge = c.status.outage && c.status.outage.reported_out_of_service
+        ? `<div class="outage-badge"><i class="bi bi-exclamation-triangle"></i> Reported not running by ${c.status.outage.outage_report_count} riders</div>`
+        : "";
+
       return `<div class="bus ${open ? "selected" : ""} ${riding ? "riding" : ""}" data-id="${c.bus.id}">
         <div class="bus-head">
           <div class="route"><div class="number">${esc(c.route.route_number)}</div><div class="route-name">${esc(c.bus.bus_number)}</div></div>
           <div class="eta ${etaClass(c.eta)}"><b class="eta-main"${etaAttrs}>${etaMain}</b><span>${etaSub}</span></div>
         </div>
+        ${outageBadge}
         <div class="bus-meta">
           <div class="mini-bar"><div class="fill" style="width:${Math.min(100, pct)}%;background:${color}"></div></div>
           <div class="status" style="color:${color}">${esc(c.prediction.status)}</div>
@@ -1514,6 +1589,67 @@ async function doReport(busId, crowdLevel) {
     }
   } finally {
     if (btn) btn.disabled = false;
+  }
+}
+
+// ---------------------------------------------------------------------
+// Outage reporting
+// ---------------------------------------------------------------------
+// A different signal from a crowd report: this says a bus might not
+// be coming at all. Unlike crowd reports there's no per-device
+// cooldown - the backend only starts showing a bus as reported once a
+// second rider confirms the same thing, which is the safeguard here
+// instead.
+const OUTAGE_REASON_LABEL = {
+  not_running: "Not running",
+  breakdown: "Broken down",
+  never_arrived: "Never arrived",
+  accident: "Accident",
+  other: "Other issue",
+};
+
+function emptyOutageStatus() {
+  return { reported_out_of_service: false, outage_report_count: 0, outage_reasons: [], last_outage_report_at: null };
+}
+
+function renderOutage(outage) {
+  if (!outageTagEl) return;
+  const status = outage || emptyOutageStatus();
+
+  if (status.reported_out_of_service) {
+    outageTagEl.textContent = `${status.outage_report_count} rider${status.outage_report_count === 1 ? "" : "s"} reported`;
+    outageTagEl.classList.add("reported");
+
+    if (outageBannerEl) {
+      const reasons = (status.outage_reasons || [])
+        .map((r) => OUTAGE_REASON_LABEL[r] || r)
+        .join(", ") || "not running";
+      outageBannerEl.textContent = `\u26a0\ufe0f Reported ${esc(reasons)} by ${status.outage_report_count} rider${status.outage_report_count === 1 ? "" : "s"}. Consider the alternative bus below.`;
+      outageBannerEl.classList.add("show");
+    }
+  } else {
+    outageTagEl.textContent = "Not reported";
+    outageTagEl.classList.remove("reported");
+    if (outageBannerEl) outageBannerEl.classList.remove("show");
+  }
+}
+
+async function doOutageReport() {
+  const c = candidates.find((x) => x.bus.id === selectedBusId && !x.error);
+  if (!c) return;
+
+  const reason = outageReasonEl ? outageReasonEl.value : "not_running";
+  if (outageReportBtnEl) outageReportBtnEl.disabled = true;
+
+  try {
+    const res = await invoke("submit_outage_report", { busId: c.bus.id, reason });
+    if (outageMsgEl) outageMsgEl.textContent = res.message;
+    if (c.status) c.status.outage = res.status;
+    renderOutage(res.status);
+  } catch (err) {
+    if (outageMsgEl) outageMsgEl.textContent = `Report failed: ${err}`;
+  } finally {
+    if (outageReportBtnEl) outageReportBtnEl.disabled = false;
   }
 }
 
@@ -1945,6 +2081,10 @@ function resetSelectedPanels() {
   timeBarsEl.innerHTML = "";
   daysEl.innerHTML = "";
   clearChart();
+  if (outageTagEl) outageTagEl.textContent = "Select a bus";
+  if (outageTagEl) outageTagEl.classList.remove("reported");
+  if (outageBannerEl) outageBannerEl.classList.remove("show");
+  if (outageMsgEl) outageMsgEl.textContent = "";
 }
 
 function renderSelected() {
@@ -2030,6 +2170,8 @@ function renderSelected() {
     recommendTextEl.textContent = "This is the only direct bus for the selected journey.";
     betterEl.textContent = "No alternative bus is available for this exact journey.";
   }
+
+  renderOutage(status.outage);
 
   loadForecast(bus.id, fromStop.id);
 }
@@ -2192,6 +2334,7 @@ function setupTracking() {
     myCoordsEl.textContent = `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`;
     mySpeedEl.textContent = speed_kmh == null ? "\u2014" : `${speed_kmh.toFixed(1)} km/h`;
     updateUserMarker(latitude, longitude);
+    lastKnownPosition = { latitude, longitude };
   });
 
   listen("bus-status-update", (event) => {
@@ -2268,6 +2411,16 @@ window.addEventListener("DOMContentLoaded", () => {
   refreshBtnEl = document.getElementById("refresh-btn");
   refreshStampEl = document.getElementById("refresh-stamp");
   autoRefreshEl = document.getElementById("auto-refresh");
+  weatherChipEl = document.getElementById("weather-chip");
+  weatherIconEl = document.getElementById("weather-icon");
+  weatherTextEl = document.getElementById("weather-text");
+  weatherAdvisoryEl = document.getElementById("weather-advisory");
+  weatherAdvisoryTextEl = document.getElementById("weather-advisory-text");
+  outageTagEl = document.getElementById("outage-tag");
+  outageBannerEl = document.getElementById("outage-banner");
+  outageReasonEl = document.getElementById("outage-reason");
+  outageReportBtnEl = document.getElementById("outage-report-btn");
+  outageMsgEl = document.getElementById("outage-msg");
 
   refreshBtnEl.addEventListener("click", () => {
     // A manual press is also a statement that the automatic schedule
@@ -2312,6 +2465,7 @@ window.addEventListener("DOMContentLoaded", () => {
   addBusBtnEl.addEventListener("click", doAddBus);
   demoToggleEl.addEventListener("click", toggleDemo);
   demoResetEl.addEventListener("click", resetDemo);
+  outageReportBtnEl.addEventListener("click", doOutageReport);
 
   // Held in memory only - never persisted, so closing the app forgets it.
   adminTokenEl.addEventListener("input", () => {
@@ -2337,6 +2491,7 @@ window.addEventListener("DOMContentLoaded", () => {
     refreshDemo();
     startAutoRefresh({ immediate: true });
     connectStream();
+    loadWeather();
   });
   // Start location tracking automatically on app startup instead of
   // waiting for the user to click "Enable live tracking".

@@ -64,6 +64,12 @@ class Bus(Base):
         cascade="all, delete-orphan",
     )
 
+    outage_reports = relationship(
+        "OutageReport",
+        back_populates="bus",
+        cascade="all, delete-orphan",
+    )
+
 
 class BusStop(Base):
     __tablename__ = "bus_stops"
@@ -162,6 +168,40 @@ class CrowdReport(Base):
         "Bus",
         back_populates="crowd_reports",
     )
+
+class OutageReport(Base):
+    """
+    A rider's claim that a bus isn't running - broken down, cancelled,
+    or just never showed up.
+
+    Deliberately a separate table from CrowdReport rather than another
+    crowd_level value: a crowd report says a bus is busy, an outage
+    report says it might not exist right now, and averaging the two
+    together would produce a number that means nothing. See
+    services/outage.py for how individual reports become a status
+    other riders can trust.
+    """
+
+    __tablename__ = "outage_reports"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, nullable=False, index=True)
+    bus_id = Column(Integer, ForeignKey("buses.id"), nullable=False, index=True)
+
+    reason = Column(String, nullable=False, default="not_running")
+
+    timestamp = Column(
+        DateTime,
+        default=datetime.utcnow,
+        nullable=False,
+        index=True,
+    )
+
+    bus = relationship(
+        "Bus",
+        back_populates="outage_reports",
+    )
+
 
 class CrowdObservation(Base):
     """
