@@ -25,12 +25,16 @@
         </button>
       </header>
 
-      <!-- Sits above every page, not inside one, so simulated numbers
-           can never be read as real no matter which screen you're on. -->
+      <!-- Sits above every page, not inside one. Demo mode and a weather
+           advisory both compete for this one slot: showing both at once
+           reads as banner spam, so only one is visible at a time (see
+           updateBannerRotation in main.js), alternating when both are
+           relevant instead of stacking. -->
       <div class="demo-banner" id="demo-banner">
         <i class="bi bi-cone-striped"></i>
         <span id="demo-banner-text">Demo mode &mdash; all crowd data on screen is simulated</span>
       </div>
+      <div class="weather-advisory" id="weather-advisory"><i class="bi bi-exclamation-triangle"></i><span id="weather-advisory-text"></span></div>
 
       <main class="pages">
 
@@ -40,8 +44,6 @@
             <div class="eyebrow">Smart transit intelligence</div>
             <h1>Know your bus before you board.</h1>
           </div>
-
-          <div class="weather-advisory" id="weather-advisory"><i class="bi bi-exclamation-triangle"></i><span id="weather-advisory-text"></span></div>
 
           <div class="search">
             <div class="field"><small>Starting location</small><select id="from"></select></div>
@@ -57,7 +59,7 @@
 
           <div class="route-count"><span><b id="count">0</b> buses available</span><span>Soonest first</span></div>
 
-          <div class="bus-list" id="bus-list"><div class="empty">Pick a starting location and destination, then hit Predict buses.</div></div>
+          <div class="bus-list" id="bus-list"><div class="empty"><i class="bi bi-signpost-2"></i>Pick a starting location and destination, then hit Predict buses.</div></div>
         </section>
 
         <!-- ============ MAP ============ -->
@@ -160,28 +162,12 @@
           </div>
 
           <div class="board-list" id="board-list">
-            <div class="empty">Choose a stop to see live arrivals.</div>
+            <div class="empty"><i class="bi bi-signpost-split"></i>Choose a stop to see live arrivals.</div>
           </div>
         </section>
 
         <!-- ============ MANAGE (fleet + demo mode) ============ -->
         <section class="page" data-page="manage">
-
-          <!-- ---- Demo mode ---- -->
-          <div class="card">
-            <div class="card-title"><h2>Demo mode</h2><span class="tag" id="demo-tag">Checking&hellip;</span></div>
-            <p class="card-note" id="demo-message">
-              Simulated buses drive their real routes and generate riders, so the
-              app has something to show without live passengers. Everything it
-              writes is tagged and removed when you stop.
-            </p>
-            <div class="bus-actions">
-              <button class="action-btn" id="demo-toggle" disabled>Start demo mode</button>
-              <button class="action-btn secondary" id="demo-reset">Clear simulated data</button>
-            </div>
-            <div class="action-msg" id="demo-msg"></div>
-            <div class="sim-list" id="demo-buses"></div>
-          </div>
 
           <!-- ---- Add a bus ---- -->
           <div class="card">
@@ -204,26 +190,47 @@
             <div class="action-msg" id="add-bus-msg"></div>
           </div>
 
-          <!-- ---- Admin token ---- -->
-          <div class="card">
-            <div class="card-title"><h2>Admin token</h2><span class="tag">Required to delete</span></div>
-            <p class="card-note">
-              Deleting a bus needs the token set in <code>BUSMITRA_ADMIN_TOKEN</code>
-              on the server. It's kept in memory for this session only &mdash; never
-              written to disk.
-            </p>
-            <label class="form-field">
-              <small>X-Admin-Token</small>
-              <input id="admin-token" type="password" placeholder="Paste admin token" autocomplete="off" />
-            </label>
-          </div>
-
           <!-- ---- Fleet list ---- -->
           <div class="card">
             <div class="card-title"><h2>Fleet</h2><span class="tag" id="fleet-tag">&mdash;</span></div>
             <div class="action-msg" id="fleet-msg"></div>
-            <div id="fleet-list"><div class="empty">Loading fleet&hellip;</div></div>
+            <div id="fleet-list"><div class="empty"><i class="bi bi-truck"></i>Loading fleet&hellip;</div></div>
           </div>
+
+          <!-- ---- Advanced: demo mode + admin token, grouped and collapsed
+               by default so the fleet tasks people actually come here for
+               aren't sandwiched between a simulator and a password field. -->
+          <details class="advanced-group">
+            <summary><i class="bi bi-chevron-right"></i>Advanced</summary>
+
+            <div class="card">
+              <div class="card-title"><h2>Demo mode</h2><span class="tag" id="demo-tag">Checking&hellip;</span></div>
+              <p class="card-note" id="demo-message">
+                Simulated buses drive their real routes and generate riders, so the
+                app has something to show without live passengers. Everything it
+                writes is tagged and removed when you stop.
+              </p>
+              <div class="bus-actions">
+                <button class="action-btn" id="demo-toggle" disabled>Start demo mode</button>
+                <button class="action-btn secondary" id="demo-reset">Clear simulated data</button>
+              </div>
+              <div class="action-msg" id="demo-msg"></div>
+              <div class="sim-list" id="demo-buses"></div>
+            </div>
+
+            <div class="card">
+              <div class="card-title"><h2>Admin token</h2><span class="tag">Required to delete</span></div>
+              <p class="card-note">
+                Deleting a bus needs the token set in <code>BUSMITRA_ADMIN_TOKEN</code>
+                on the server. It's kept in memory for this session only &mdash; never
+                written to disk.
+              </p>
+              <label class="form-field">
+                <small>X-Admin-Token</small>
+                <input id="admin-token" type="password" placeholder="Paste admin token" autocomplete="off" />
+              </label>
+            </div>
+          </details>
 
         </section>
 

@@ -56,6 +56,12 @@ body{
 .refresh-btn.spinning i{display:block;animation:spin .8s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
 
+/* A brief pulse for values that just changed - the gauge, the selected
+   route tag - so an update reads as "this just happened" instead of
+   the text just silently being different than a second ago. */
+@keyframes flashPulse{0%{opacity:.35;transform:scale(.97)}100%{opacity:1;transform:scale(1)}}
+.flash{animation:flashPulse .45s ease}
+
 /* The one place figures are allowed to look uncertain: when they're old
    enough that they probably are. Subtle on purpose - it should read as
    "check the timestamp", not as an error. */
@@ -66,6 +72,9 @@ body.stale .stamp{color:var(--yellow)}
 @media(prefers-reduced-motion:reduce){
   .refresh-btn.spinning i{animation:none}
   .b{transition:none}
+  .expand{transition:none}
+  .flash{animation:none}
+  .gauge{transition:none}
 }
 
 /* ---------- Pages: one visible at a time, each scrolls independently ---------- */
@@ -110,11 +119,22 @@ body.stale .stamp{color:var(--yellow)}
 .bus-list{display:flex;flex-direction:column;gap:10px;flex:1;min-height:0}
 .bus{border:1px solid var(--line);border-radius:var(--r-md);padding:15px;cursor:pointer;transition:border-color .15s}
 .bus:hover,.bus.selected{border-color:var(--cyan)}
+/* The soonest arrival in the list, so the one bus most people came for
+   doesn't rely on them noticing it's sorted to the top. */
+.bus.next-up{border-color:rgba(85,230,208,.4)}
+.bus.next-up.selected{border-color:var(--cyan)}
+.next-badge{
+  display:inline-block;margin-left:2px;padding:2px 7px;
+  font-size:9px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;
+  color:#052019;background:var(--cyan);border-radius:20px;vertical-align:middle;
+}
 .bus-head{display:flex;justify-content:space-between;gap:12px}
 .route{display:flex;gap:9px;align-items:center}
 .number{font:600 12px "Space Grotesk";background:var(--bg);border:1px solid var(--line);padding:4px 7px;border-radius:var(--r-sm)}
 .route-name{font-size:13px;color:var(--text)}
-.eta{text-align:right;font:600 15px "Space Grotesk"}
+/* Bigger and bolder than the label under it - the countdown is the
+   number people actually scan the list for, everything else is context. */
+.eta{text-align:right;font:700 18px "Space Grotesk"}
 /* The headline is its own node so the one-second tick can rewrite the
    countdown without touching the label underneath it. */
 .eta .eta-main{display:block;font:inherit}
@@ -123,9 +143,19 @@ body.stale .stamp{color:var(--yellow)}
 .mini-bar{height:5px;flex:1;background:var(--bg);border-radius:4px;overflow:hidden;min-width:60px}
 .fill{height:100%;border-radius:4px}
 .status{font-size:12px;font-weight:600}
-.confidence{font-size:11px;color:var(--muted)}
-.expand{display:none;border-top:1px solid var(--line);margin-top:13px;padding-top:13px}
-.bus.selected .expand{display:block}
+.confidence{font-size:11px;color:var(--muted);margin-bottom:12px}
+
+/* The expand panel used to be a display:none/block snap. Animating
+   grid-template-rows between 0fr and 1fr gives a real open/close
+   transition without ever having to know the panel's content height -
+   the inner wrapper is what actually gets clipped as it grows. */
+.expand{
+  display:grid;grid-template-rows:0fr;
+  border-top:1px solid transparent;margin-top:0;padding-top:0;
+  transition:grid-template-rows .25s ease,margin-top .25s ease,padding-top .25s ease,border-color .25s ease .05s;
+}
+.expand-inner{min-height:0;overflow:hidden}
+.bus.selected .expand{grid-template-rows:1fr;border-top-color:var(--line);margin-top:13px;padding-top:13px}
 .factors{display:flex;gap:16px;flex-wrap:wrap}
 .factor{font-size:11px;color:var(--muted)}
 .no-live-tag{font-size:11px;color:var(--yellow)}
@@ -139,7 +169,24 @@ body.stale .stamp{color:var(--yellow)}
 .report-row select{flex:1;background:transparent;color:var(--text);border:1px solid var(--line);border-radius:var(--r-sm);padding:9px 8px;font-size:11.5px}
 .action-msg{font-size:11px;color:var(--muted);margin-top:7px;min-height:14px}
 
-.empty{padding:40px 10px;text-align:center;color:var(--muted);font-size:12.5px;line-height:1.6}
+.empty{
+  padding:40px 10px;text-align:center;color:var(--muted);font-size:12.5px;line-height:1.6;
+  display:flex;flex-direction:column;align-items:center;gap:10px;
+}
+.empty i{font-size:23px;opacity:.5}
+/* A smaller variant for empty/loading states that sit inside an
+   existing card rather than filling a whole page. */
+.empty-inline{padding:14px 10px;gap:6px}
+.empty-inline i{font-size:16px}
+
+/* ---------- Crowding trend ---------- */
+/* Rising and falling say something different from a plain colour-free
+   reading, so they get the same semantic colours as the status text:
+   filling up leans toward the "leave later" tone, thinning out leans
+   toward "leave now". */
+.trend-rising{color:var(--orange);font-weight:600}
+.trend-falling{color:var(--green);font-weight:600}
+.trend-steady{color:var(--muted)}
 
 /* ---------- Tracking panel (Map page) ---------- */
 .tracking-panel{border:1px solid var(--line);border-radius:var(--r-lg);padding:16px;margin-bottom:16px;font-size:11.5px;color:var(--muted)}
@@ -149,7 +196,10 @@ body.stale .stamp{color:var(--yellow)}
 .track-btn{width:100%;margin-top:12px;padding:11px;border-radius:var(--r-sm);border:1px solid var(--line);background:transparent;color:var(--cyan);font-size:11.5px;font-weight:600;cursor:pointer}
 .track-btn:hover{border-color:var(--cyan)}
 .track-btn:disabled{opacity:.5;cursor:default}
-.match-pill{display:inline-flex;align-items:center;gap:6px;margin-top:8px;font-size:11px;color:var(--cyan)}
+/* GPS successfully matched to a bus is good news (tracking is working),
+   so it gets the same green used for positive status elsewhere - cyan
+   stays reserved for brand/interactive elements, not outcomes. */
+.match-pill{display:inline-flex;align-items:center;gap:6px;margin-top:8px;font-size:11px;color:var(--green)}
 
 /* ---------- Map ---------- */
 .map-card{margin-bottom:0}
@@ -171,7 +221,11 @@ body.stale .stamp{color:var(--yellow)}
 
 /* ---------- Gauge / prediction detail ---------- */
 .gauge-card{display:grid;grid-template-columns:120px 1fr;gap:20px;align-items:center}
-.gauge{width:112px;height:112px;border-radius:50%;background:conic-gradient(#20333f 0 100%);display:grid;place-items:center;position:relative}
+.gauge{
+  width:112px;height:112px;border-radius:50%;background:conic-gradient(#20333f 0 100%);
+  display:grid;place-items:center;position:relative;
+  transition:background .6s ease;
+}
 .gauge:after{content:"";position:absolute;width:88px;height:88px;border-radius:50%;background:var(--panel)}
 .gauge-content{z-index:1;text-align:center}
 .gauge-content b{font:600 25px "Space Grotesk";display:block}
@@ -182,8 +236,11 @@ body.stale .stamp{color:var(--yellow)}
 .next span{color:var(--cyan);font-weight:600}
 .next.next-sub{border-top:none;margin-top:0;padding-top:6px}
 
-.recommend{margin-top:16px;padding:14px 16px;border-left:2px solid var(--cyan);font-size:12px;line-height:1.55}
-.recommend b{font-size:12.5px}.recommend span{color:var(--cyan)}
+/* The recommendation is a piece of good news ("here's your better
+   option"), so it's coloured green like other positive outcomes -
+   cyan is left to mean "tappable/selected" everywhere in the app. */
+.recommend{margin-top:16px;padding:14px 16px;border-left:2px solid var(--green);font-size:12px;line-height:1.55}
+.recommend b{font-size:12.5px}.recommend span{color:var(--green)}
 
 /* ---------- Forecast ---------- */
 .chart-wrap{height:200px}
@@ -268,17 +325,44 @@ body.stale .stamp{color:var(--yellow)}
 /* ---------- Demo mode banner ---------- */
 /* Deliberately loud and always above the page content: a simulated
    crowd figure that gets mistaken for a real one is worse than no
-   figure at all. */
+   figure at all. Styled as an inset rounded alert - same visual
+   language as .weather-advisory - rather than a full-bleed bar, so the
+   two don't read as two different kinds of thing stacked on Predict. */
 .demo-banner{
   display:none;flex:0 0 auto;align-items:center;gap:8px;
-  padding:9px 20px;background:rgba(242,193,78,.12);
-  border-bottom:1px solid var(--yellow);
+  margin:10px 20px 0;padding:9px 14px;
+  background:rgba(242,193,78,.12);border:1px solid var(--yellow);border-radius:var(--r-md);
   color:var(--yellow);font-size:11.5px;font-weight:600;
 }
 .demo-banner.show{display:flex}
 .demo-banner i{font-size:13px}
 
+/* Runs once each time either banner's "show" class is added - including
+   every step of the rotation above - so alternating between demo mode
+   and a weather advisory reads as a soft handoff, not a jump-cut. */
+@keyframes bannerIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:translateY(0)}}
+.demo-banner.show,.weather-advisory.show{animation:bannerIn .3s ease}
+@media(prefers-reduced-motion:reduce){
+  .demo-banner.show,.weather-advisory.show{animation:none}
+}
+
 /* ---------- Manage page ---------- */
+/* Demo mode and the admin token are tucked behind a disclosure so the
+   two things most Manage visits are actually for - adding a bus,
+   checking the fleet - aren't sandwiched between a simulator toggle
+   and a password field. */
+.advanced-group{margin-top:2px}
+.advanced-group summary{
+  list-style:none;cursor:pointer;user-select:none;
+  display:flex;align-items:center;gap:8px;
+  padding:14px 2px;color:var(--muted);font-size:12.5px;font-weight:600;
+}
+.advanced-group summary::-webkit-details-marker{display:none}
+.advanced-group summary i{font-size:10px;transition:transform .18s ease}
+.advanced-group[open] summary i{transform:rotate(90deg)}
+.advanced-group[open] summary{color:var(--text)}
+.advanced-group .card{margin-top:12px}
+
 .card-note{font-size:12px;color:var(--muted);line-height:1.55;margin:0 0 14px}
 .card-note code{
   font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;
@@ -364,9 +448,12 @@ body.stale .stamp{color:var(--yellow)}
 /* ---------- Weather ---------- */
 .weather-chip{display:flex;align-items:center;gap:5px;color:var(--muted);font-size:11px}
 .weather-chip i{font-size:12px;color:var(--cyan)}
+/* Now a global strip (see index.html) rather than scoped to the Predict
+   page, so it uses the same inset-margin treatment as .demo-banner
+   instead of the page's own inner padding. */
 .weather-advisory{
   display:none;align-items:flex-start;gap:9px;
-  padding:11px 13px;margin-bottom:16px;
+  margin:10px 20px 0;padding:11px 13px;
   background:rgba(110,168,250,.1);border:1px solid var(--blue);border-radius:var(--r-md);
   color:var(--blue);font-size:12px;line-height:1.5;
 }

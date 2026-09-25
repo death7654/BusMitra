@@ -42,6 +42,25 @@ function esc(value) {
   })[ch]);
 }
 
+// A blank list with just a sentence in it reads as unfinished. Every
+// "nothing here yet" message gets a Bootstrap icon above the text
+// instead, so empty states look designed rather than like a bug.
+function emptyState(icon, html) {
+  return `<div class="empty"><i class="bi ${icon}"></i>${html}</div>`;
+}
+
+// Briefly pulses an element so a value that just changed (the gauge,
+// the selected-route tag) reads as "this just updated" rather than
+// snapping silently. Safe to call repeatedly - it just restarts itself.
+function flash(el) {
+  if (!el) return;
+  el.classList.remove("flash");
+  // Force a reflow so removing+re-adding the class restarts the
+  // animation even if it's already running from a previous update.
+  void el.offsetWidth;
+  el.classList.add("flash");
+}
+
 // ---------------------------------------------------------------------
 // State
 // ---------------------------------------------------------------------
@@ -950,6 +969,56 @@ function maybeRefreshWeather() {
   return loadWeather();
 }
 
+// ---------------------------------------------------------------------
+// Shared banner strip: demo-mode and the weather advisory both want the
+// same slot above the page content. Showing both permanently reads as
+// banner spam, so at most one is visible at a time; when both are
+// relevant they alternate every few seconds instead of stacking. Demo
+// mode is listed first, so if both come active at the same moment it's
+// the one shown first - a simulated-data warning matters more than a
+// weather tip.
+// ---------------------------------------------------------------------
+const BANNER_ROTATE_MS = 6000;
+const bannerWants = { demo: false, weather: false };
+let bannerRotateTimer = null;
+let bannerRotateIndex = 0;
+
+function applyBannerVisibility(showKey) {
+  demoBannerEl?.classList.toggle("show", showKey === "demo");
+  weatherAdvisoryEl?.classList.toggle("show", showKey === "weather");
+}
+
+function updateBannerRotation() {
+  const active = Object.keys(bannerWants).filter((k) => bannerWants[k]);
+
+  if (active.length <= 1) {
+    clearInterval(bannerRotateTimer);
+    bannerRotateTimer = null;
+    applyBannerVisibility(active[0] ?? null);
+    return;
+  }
+
+  if (bannerRotateTimer) return; // already rotating between the same two
+
+  bannerRotateIndex = 0;
+  applyBannerVisibility(active[bannerRotateIndex]);
+  bannerRotateTimer = setInterval(() => {
+    const stillActive = Object.keys(bannerWants).filter((k) => bannerWants[k]);
+    if (stillActive.length <= 1) {
+      updateBannerRotation();
+      return;
+    }
+    bannerRotateIndex = (bannerRotateIndex + 1) % stillActive.length;
+    applyBannerVisibility(stillActive[bannerRotateIndex]);
+  }, BANNER_ROTATE_MS);
+}
+
+function setBannerWant(key, wants) {
+  if (bannerWants[key] === wants) return;
+  bannerWants[key] = wants;
+  updateBannerRotation();
+}
+
 function renderWeather() {
   if (!weatherData || !weatherChipEl) return;
 
@@ -961,16 +1030,15 @@ function renderWeather() {
   if (weatherAdvisoryEl) {
     if (weatherData.advisory) {
       weatherAdvisoryTextEl.textContent = weatherData.advisory;
-      weatherAdvisoryEl.classList.add("show");
       weatherAdvisoryEl.classList.toggle(
         "severe",
         weatherData.condition_category === "storm" || weatherData.condition_category === "snow"
       );
-    } else {
-      weatherAdvisoryEl.classList.remove("show");
     }
+    setBannerWant("weather", Boolean(weatherData.advisory));
   }
 }
+
 
 // ---------------------------------------------------------------------
 // ---------------------------------------------------------------------
@@ -988,7 +1056,7 @@ async function loadRoutes() {
   } catch (err) {
     refreshFailures++;
     markBackendDown(err);
-    busListEl.innerHTML = `<div class="empty">Can't reach the backend (${esc(err)}). Check that uvicorn is running, then press the refresh button up top.</div>`;
+    busListEl.innerHTML = emptyState("bi-plug", `Can't reach the backend (${esc(err)}). Check that uvicorn is running, then press the refresh button up top.`);
   }
 }
 
@@ -1220,7 +1288,7 @@ async function runPredict() {
     noticeEl.classList.add("show");
     candidates = [];
     countEl.textContent = "0";
-    busListEl.innerHTML = '<div class="empty">No direct buses found for this journey.<br>Try reversing the locations or choosing another pair of stops.</div>';
+    busListEl.innerHTML = emptyState("bi-signpost-2", "No direct buses found for this journey.<br>Try reversing the locations or choosing another pair of stops.");
     renderSelected();
     return;
   }
@@ -1330,7 +1398,8 @@ async function refreshCandidates() {
 // Rendering: bus list
 // ---------------------------------------------------------------------
 function renderList() {
-  countEl.textContent = candidates.filter((c) => !c.error).length;
+  const okCandidates = candidates.filter((c) => !c.error);
+  countEl.textContent = okCandidates.length;
 
   if (candidates.length === 0) return;
 
@@ -1338,6 +1407,12 @@ function renderList() {
     listRenderPending = true;
     return;
   }
+
+  // The soonest arrival is already first in the array (see the sort in
+  // runPredict), but "first in a list" is easy to skim past. Marking it
+  // explicitly means the one bus most people actually want doesn't
+  // depend on the reader noticing list order.
+  const nextUpId = okCandidates.length > 1 ? okCandidates[0].bus.id : null;
 
   busListEl.innerHTML = candidates
     .map((c) => {
@@ -1380,18 +1455,24 @@ function renderList() {
         ? `<div class="outage-badge"><i class="bi bi-exclamation-triangle"></i> Reported not running by ${c.status.outage.outage_report_count} riders</div>`
         : "";
 
-      return `<div class="bus ${open ? "selected" : ""} ${riding ? "riding" : ""}" data-id="${c.bus.id}">
+      const isNext = c.bus.id === nextUpId;
+      const trend = c.status.trend && c.status.trend !== "unknown" ? c.status.trend : null;
+      const confidenceLine = `<div class="confidence">${esc(crowdSourceLabel(c.status))}${
+        trend ? ` &middot; <span class="trend-${esc(trend)}">${TREND_LABEL[trend]}</span>` : ""
+      }</div>`;
+
+      return `<div class="bus ${open ? "selected" : ""} ${riding ? "riding" : ""} ${isNext ? "next-up" : ""}" data-id="${c.bus.id}">
         <div class="bus-head">
-          <div class="route"><div class="number">${esc(c.route.route_number)}</div><div class="route-name">${esc(c.bus.bus_number)}</div></div>
+          <div class="route"><div class="number">${esc(c.route.route_number)}</div><div class="route-name">${esc(c.bus.bus_number)}${isNext ? ' <span class="next-badge">Next</span>' : ""}</div></div>
           <div class="eta ${etaClass(c.eta)}"><b class="eta-main"${etaAttrs}>${etaMain}</b><span>${etaSub}</span></div>
         </div>
         ${outageBadge}
         <div class="bus-meta">
           <div class="mini-bar"><div class="fill" style="width:${Math.min(100, pct)}%;background:${color}"></div></div>
           <div class="status" style="color:${color}">${esc(c.prediction.status)}</div>
-          <div class="confidence">${esc(crowdSourceLabel(c.status))}${c.status.trend && c.status.trend !== "unknown" ? ` &middot; ${TREND_LABEL[c.status.trend]}` : ""}</div>
         </div>
-        <div class="expand">
+        <div class="expand"><div class="expand-inner">
+          ${confidenceLine}
           <div class="factors">${liveTag}<span class="factor">${esc(c.route.route_name)}</span></div>
           <div class="bus-actions">
             ${rideButton}
@@ -1424,7 +1505,7 @@ function renderList() {
             }</button>
           </div>
           <div class="action-msg" id="action-msg-${c.bus.id}"></div>
-        </div>
+        </div></div>
       </div>`;
     })
     .join("");
@@ -1700,7 +1781,7 @@ async function loadFleet() {
   } catch (err) {
     refreshFailures++;
     markBackendDown(err);
-    fleetListEl.innerHTML = `<div class="empty">Couldn't load the fleet: ${esc(err)}</div>`;
+    fleetListEl.innerHTML = emptyState("bi-plug", `Couldn't load the fleet: ${esc(err)}`);
     fleetTagEl.textContent = "unavailable";
   }
 }
@@ -1709,7 +1790,7 @@ function renderFleet() {
   fleetTagEl.textContent = `${fleet.length} bus${fleet.length === 1 ? "" : "es"}`;
 
   if (!fleet.length) {
-    fleetListEl.innerHTML = '<div class="empty">No buses in the fleet yet. Add one above.</div>';
+    fleetListEl.innerHTML = emptyState("bi-truck", "No buses in the fleet yet. Add one above.");
     return;
   }
 
@@ -1929,7 +2010,7 @@ async function loadBoard() {
     boardUpdatedEl.textContent = new Date().toLocaleTimeString();
 
     if (!board.arrivals.length) {
-      boardListEl.innerHTML = `<div class="empty">${esc(board.message)}</div>`;
+      boardListEl.innerHTML = emptyState("bi-signpost-split", esc(board.message));
       return;
     }
 
@@ -1970,7 +2051,7 @@ async function loadBoard() {
   } catch (err) {
     refreshFailures++;
     markBackendDown(err);
-    boardListEl.innerHTML = `<div class="empty">Couldn't load arrivals: ${esc(err)}</div>`;
+    boardListEl.innerHTML = emptyState("bi-plug", `Couldn't load arrivals: ${esc(err)}`);
   }
 }
 
@@ -1981,7 +2062,7 @@ function renderDemo() {
   const running = demoState?.running === true;
   const available = demoState?.available !== false;
 
-  demoBannerEl.classList.toggle("show", running);
+  setBannerWant("demo", running);
   if (running) {
     demoBannerTextEl.textContent =
       `Demo mode — all crowd data on screen is simulated (${demoState.simulated_buses.length} buses)`;
@@ -2121,7 +2202,12 @@ function resetSelectedPanels() {
   if (outageTagEl) outageTagEl.classList.remove("reported");
   if (outageBannerEl) outageBannerEl.classList.remove("show");
   if (outageMsgEl) outageMsgEl.textContent = "";
+  lastRenderedBusId = null;
+  lastRenderedPct = null;
 }
+
+let lastRenderedBusId = null;
+let lastRenderedPct = null;
 
 function renderSelected() {
   const c = candidates.find((x) => x.bus.id === selectedBusId && !x.error);
@@ -2133,6 +2219,20 @@ function renderSelected() {
   const { bus, route, fromStop, status, prediction } = c;
   const pct = Math.round(prediction.final_fullness);
   const color = colorFor(prediction.status);
+
+  // A number changing silently every refresh reads as flicker; flashing
+  // it only when the *value itself* moves (not on every poll) reads as
+  // "this just updated" instead. Picking a different bus flashes the
+  // whole card, since everything about it is new.
+  const busChanged = bus.id !== lastRenderedBusId;
+  if (busChanged) flash(document.querySelector(".gauge-card"));
+  if (busChanged || pct !== lastRenderedPct) {
+    flash(gaugeEl);
+    flash(gaugePctEl);
+  }
+  if (busChanged) flash(selectedTagEl);
+  lastRenderedBusId = bus.id;
+  lastRenderedPct = pct;
 
   selectedTagEl.textContent = bus.bus_number;
   historyTagEl.textContent = `${bus.bus_number} forecast`;
@@ -2213,7 +2313,7 @@ function renderSelected() {
 }
 
 async function loadForecast(busId, stopId) {
-  timeBarsEl.innerHTML = '<div class="empty" style="padding:10px">Loading\u2026</div>';
+  timeBarsEl.innerHTML = '<div class="empty empty-inline"><i class="bi bi-hourglass-split"></i>Loading\u2026</div>';
   daysEl.innerHTML = "";
   try {
     const forecast = await invoke("get_bus_forecast", { busId, stopId });
@@ -2241,7 +2341,7 @@ async function loadForecast(busId, stopId) {
 
     drawChart(forecast.hourly);
   } catch (err) {
-    timeBarsEl.innerHTML = `<div class="empty" style="padding:10px">Couldn't load forecast: ${esc(err)}</div>`;
+    timeBarsEl.innerHTML = `<div class="empty empty-inline"><i class="bi bi-plug"></i>Couldn't load forecast: ${esc(err)}</div>`;
   }
 }
 
