@@ -10,11 +10,15 @@ actually recognises - "rain", "storm", "clear" - plus a one-line
 advisory when conditions are likely to slow buses down or pack them
 tighter than usual.
 
-Results are cached in memory for a few minutes. A Predict-page refresh
-every fifteen seconds would otherwise mean a fresh outbound call for a
-figure that doesn't move inside that window, and a slow or unreachable
-weather provider has no business delaying the bus predictions that
-don't depend on it.
+Results are cached in memory well past their freshness window. A
+Predict-page refresh every fifteen seconds would otherwise mean a
+fresh outbound call for a figure that doesn't move inside that window
+- and on a shared-IP host like Render's free tier, Open-Meteo's
+per-IP rate limit is shared with every other free-tier app on the same
+egress IP, not just this one. A stale reading a rider can act on beats
+a hard failure, so a live fetch that gets rate-limited or times out
+falls back to the last good reading instead of raising, and only
+raises when there is truly nothing to fall back to yet.
 """
 
 import time
@@ -23,8 +27,9 @@ import httpx
 
 OPEN_METEO_URL = "https://api.open-meteo.com/v1/forecast"
 
-CACHE_TTL_SECONDS = 600
-REQUEST_TIMEOUT_SECONDS = 6.0
+CACHE_TTL_SECONDS = 1800  # how long a reading is served without re-fetching
+STALE_MAX_AGE_SECONDS = 6 * 3600  # how long a reading is still worth falling back to
+REQUEST_TIMEOUT_SECONDS = 10.0
 
 # WMO weather codes (https://open-meteo.com/en/docs), grouped into what
 # a rider needs to know rather than kept as raw numbers.
@@ -63,22 +68,7 @@ def _advisory(category: str, precipitation_mm: float) -> str | None:
     return None
 
 
-async def get_weather(latitude: float, longitude: float) -> dict:
-    """
-    Current conditions for one point, cached for CACHE_TTL_SECONDS.
-
-    Raises on a network or upstream failure - the caller turns that
-    into an HTTP error rather than serving a silently stale or fake
-    forecast.
-    """
-
-    key = (round(latitude, 2), round(longitude, 2))
-    now = time.monotonic()
-
-    cached = _cache.get(key)
-    if cached is not None and now - cached[0] < CACHE_TTL_SECONDS:
-        return cached[1]
-
+async def _fetch_live(latitude: float, longitude: float) -> dict:
     async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT_SECONDS) as client:
         response = await client.get(
             OPEN_METEO_URL,
@@ -99,7 +89,7 @@ async def get_weather(latitude: float, longitude: float) -> dict:
     precipitation_mm = float(current.get("precipitation", 0.0) or 0.0)
     condition, category = _describe(weather_code)
 
-    result = {
+    return {
         "latitude": latitude,
         "longitude": longitude,
         "temperature_c": current.get("temperature_2m"),
@@ -110,6 +100,33 @@ async def get_weather(latitude: float, longitude: float) -> dict:
         "advisory": _advisory(category, precipitation_mm),
         "observed_at": current.get("time"),
     }
+
+
+async def get_weather(latitude: float, longitude: float) -> dict:
+    """
+    Current conditions for one point.
+
+    Serves a cached reading younger than CACHE_TTL_SECONDS without any
+    outbound call. Past that, tries a live fetch; if Open-Meteo is
+    rate-limiting, down, or slow, falls back to the last reading as
+    long as it's younger than STALE_MAX_AGE_SECONDS rather than
+    failing the request outright. Only raises when a live fetch fails
+    and there is no reading at all yet to fall back to.
+    """
+
+    key = (round(latitude, 2), round(longitude, 2))
+    now = time.monotonic()
+    cached = _cache.get(key)
+
+    if cached is not None and now - cached[0] < CACHE_TTL_SECONDS:
+        return cached[1]
+
+    try:
+        result = await _fetch_live(latitude, longitude)
+    except Exception:
+        if cached is not None and now - cached[0] < STALE_MAX_AGE_SECONDS:
+            return cached[1]
+        raise
 
     _cache[key] = (now, result)
     return result
