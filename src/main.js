@@ -69,7 +69,7 @@ function flash(el) {
 // weather, cyan for brand/interactive) so a route's color never gets
 // mistaken for a status. Same route number always hashes to the same
 // entry, so a route reads as the same color on Predict, Board and Fleet.
-const ROUTE_PALETTE = ["#b98cf2", "#f28cc7", "#8cc7f2", "#f2b88c", "#8cf2c7", "#c7c2f2", "#f28ca0", "#a0d68c"];
+const ROUTE_PALETTE = ["#a78bfa", "#f472b6", "#60a5fa", "#fb923c", "#34d399", "#818cf8", "#fb7185", "#a3e635"];
 
 function routeColor(routeNumber) {
   const s = String(routeNumber ?? "");
@@ -2352,7 +2352,7 @@ function resetSelectedPanels() {
   forecastTagEl.textContent = "Select a route";
   levelEl.textContent = "No route selected";
   levelEl.style.color = "var(--muted)";
-  gaugeEl.style.background = "conic-gradient(#20333f 0 100%)";
+  gaugeEl.style.background = "conic-gradient(#262b34 0 100%)";
   gaugePctEl.textContent = "\u2014";
   detailEl.textContent = "Select a bus from the list to inspect its prediction and history.";
   nextEl.textContent = "\u2014";
@@ -2409,7 +2409,7 @@ function renderSelected() {
   historyTagEl.textContent = `${bus.bus_number} forecast`;
   forecastTagEl.textContent = bus.bus_number;
 
-  gaugeEl.style.background = `conic-gradient(${color} 0 ${Math.min(100, pct)}%, #20333f ${Math.min(100, pct)}% 100%)`;
+  gaugeEl.style.background = `conic-gradient(${color} 0 ${Math.min(100, pct)}%, #262b34 ${Math.min(100, pct)}% 100%)`;
   gaugePctEl.textContent = pct + "%";
   levelEl.textContent = prediction.status;
   levelEl.style.color = color;
@@ -2543,8 +2543,8 @@ function drawChart(hourly) {
 
   ctx.clearRect(0, 0, w, h);
 
-  ctx.strokeStyle = "#19303d";
-  ctx.fillStyle = "#718998";
+  ctx.strokeStyle = "#262b34";
+  ctx.fillStyle = "#8b93a1";
   ctx.font = "9px DM Sans";
   [0, 25, 50, 75, 100].forEach((v) => {
     const y = padT + plotH - (v / 100) * plotH;
@@ -2565,23 +2565,23 @@ function drawChart(hourly) {
   points.forEach((p) => ctx.lineTo(p.x, p.y));
   ctx.lineTo(points[points.length - 1].x, padT + plotH);
   ctx.closePath();
-  ctx.fillStyle = "rgba(85,230,208,.08)";
+  ctx.fillStyle = "rgba(52,211,153,.10)";
   ctx.fill();
 
   ctx.beginPath();
   points.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
-  ctx.strokeStyle = "#55e6d0";
+  ctx.strokeStyle = "#34d399";
   ctx.lineWidth = 2;
   ctx.stroke();
 
-  ctx.fillStyle = "#55e6d0";
+  ctx.fillStyle = "#34d399";
   points.forEach((p) => {
     ctx.beginPath();
     ctx.arc(p.x, p.y, 2, 0, Math.PI * 2);
     ctx.fill();
   });
 
-  ctx.fillStyle = "#718998";
+  ctx.fillStyle = "#8b93a1";
   hourly.forEach((p, i) => {
     if (i % 3 !== 0) return;
     const label = p.hour_of_day === 0 ? "12A" : p.hour_of_day < 12 ? `${p.hour_of_day}A` : p.hour_of_day === 12 ? "12P" : `${p.hour_of_day - 12}P`;

@@ -1,16 +1,25 @@
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap');
 
 :root{
-  --bg:#0a1219; --panel:#0e1a23; --line:#1e3140;
-  --text:#edf5f5; --muted:#7d93a1;
-  --cyan:#55e6d0; --blue:#6ea8fa; --green:#4fd486; --yellow:#f2c14e; --red:#f2635e; --orange:#f2984e;
-  --r-lg:14px; --r-md:10px; --r-sm:7px;
+  /* Charcoal surface scale - darker than pure black panels so cards read
+     as "raised" without leaning on heavy shadows */
+  --bg:#0b0d11; --panel:#161a21; --panel-alt:#1e232c; --line:#2a303b;
+  --text:#eef1f4; --muted:#8b93a1;
+  /* Fresh accent: emerald instead of the old cyan/mint, paired with the
+     same semantic set so status colors stay distinct from the brand color */
+  --cyan:#34d399; --cyan-ink:#062017;
+  --blue:#60a5fa; --green:#4ade80; --yellow:#fbbf24; --red:#f87171; --orange:#fb923c;
+  --sk-shine:#333a46;
+  --r-lg:16px; --r-md:12px; --r-sm:9px;
+  --shadow-sm:0 1px 2px rgba(0,0,0,.25);
+  --shadow-md:0 6px 20px rgba(0,0,0,.35);
+  --shadow-lg:0 20px 60px rgba(0,0,0,.5);
 }
 *{box-sizing:border-box}
 html,body{height:100%}
 body{
   margin:0;
-  background:var(--bg);
+  background:#000000;
   color:var(--text); font-family:"DM Sans",sans-serif;
   -webkit-font-smoothing:antialiased;
 }
@@ -20,55 +29,47 @@ body{
   display:flex;flex-direction:column;
   height:100vh;height:100dvh;
   max-width:480px;margin:0 auto;
-  border-left:1px solid var(--line);border-right:1px solid var(--line);
+  background:var(--bg);
   position:relative;overflow:hidden;
 }
 
 .topbar{
   flex:0 0 auto;display:flex;align-items:center;justify-content:space-between;
-  padding:18px 20px;border-bottom:1px solid var(--line);
-  background:var(--bg);
+  padding:16px 20px;
+  background:var(--panel);border-bottom:1px solid var(--line);
+  position:relative;z-index:5;
 }
-.logo{font:600 18px "Space Grotesk";margin:0;letter-spacing:-.2px;flex:0 0 auto}.logo span{color:var(--cyan);font-weight:600}
-.online{display:flex;align-items:center;gap:7px;color:var(--muted);font-size:11px}
+.logo{font:700 19px "Space Grotesk";margin:0;letter-spacing:-.2px;flex:0 0 auto}.logo span{color:var(--cyan);font-weight:700}
+.online{display:flex;align-items:center;gap:6px;color:var(--muted);font-size:11px;font-weight:500}
 .dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--green)}
 .dot.offline{background:var(--red)}
 
 /* ---------- Freshness + manual refresh ---------- */
-/* Two lines of status, right-aligned, so "is the backend up" and "how
-   old is what I'm reading" stay visually separate - they fail
-   independently and a reader needs to tell which one went wrong. */
 .status-cluster{
-  display:flex;flex-direction:column;align-items:flex-end;gap:2px;
+  display:flex;flex-direction:column;align-items:flex-end;gap:3px;
   margin-left:auto;min-width:0;
 }
 .stamp{font-size:10px;color:var(--muted);white-space:nowrap}
 
 .refresh-btn{
   flex:0 0 auto;margin-left:12px;
-  width:34px;height:34px;display:grid;place-items:center;
-  background:transparent;border:1px solid var(--line);border-radius:var(--r-sm);
-  color:var(--muted);font-size:15px;cursor:pointer;
+  width:36px;height:36px;display:grid;place-items:center;
+  background:var(--panel-alt);border:1px solid var(--line);border-radius:50%;
+  color:var(--text);font-size:15px;cursor:pointer;
+  transition:background .15s ease,border-color .15s ease,color .15s ease;
 }
-.refresh-btn:hover{border-color:var(--cyan);color:var(--cyan)}
+.refresh-btn:hover{border-color:var(--cyan);color:var(--cyan);background:rgba(52,211,153,.1)}
 .refresh-btn:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
-.refresh-btn:disabled{cursor:default;color:var(--cyan)}
+.refresh-btn:disabled{cursor:default;color:var(--cyan);border-color:var(--cyan)}
 .refresh-btn.spinning i{display:block;animation:spin .8s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
 
-/* A brief pulse for values that just changed - the gauge, the selected
-   route tag - so an update reads as "this just happened" instead of
-   the text just silently being different than a second ago. */
 @keyframes flashPulse{0%{opacity:.35;transform:scale(.97)}100%{opacity:1;transform:scale(1)}}
 .flash{animation:flashPulse .45s ease}
 
-/* The one place figures are allowed to look uncertain: when they're old
-   enough that they probably are. Subtle on purpose - it should read as
-   "check the timestamp", not as an error. */
-body.stale .eta,body.stale .status,body.stale .gauge-content b{opacity:.62}
+body.stale .eta,body.stale .status,body.stale .gauge-content b{opacity:.55}
 body.stale .stamp{color:var(--yellow)}
 
-/* Anything not answering a tap stops moving for people who ask for it. */
 @media(prefers-reduced-motion:reduce){
   .refresh-btn.spinning i{animation:none}
   .b{transition:none}
@@ -82,24 +83,20 @@ body.stale .stamp{color:var(--yellow)}
 .page{
   display:none;flex-direction:column;
   height:100%;overflow-y:auto;
-  padding:22px 20px 28px;
+  padding:20px 18px 28px;
 }
 .page.active{display:flex}
 
-.page-head{margin-bottom:22px}
-.eyebrow{font-size:12px;color:var(--muted);font-weight:500}
-.page-head h1{font:600 24px "Space Grotesk";letter-spacing:-.3px;margin:4px 0 0;line-height:1.25}
+.page-head{margin-bottom:20px}
+.eyebrow{font-size:12px;color:var(--cyan);font-weight:700;text-transform:uppercase;letter-spacing:.04em}
+.page-head h1{font:700 25px "Space Grotesk";letter-spacing:-.3px;margin:6px 0 0;line-height:1.25;color:var(--text)}
 
 /* ---------- Onboarding tip ---------- */
-/* Shown once for first-time openers, then gone for good (see
-   dismissOnboardingTip). The app has real depth - demo mode, live
-   tracking, alarms, outage reports - that isn't obvious from Predict
-   alone, so this points at just enough of it to get someone exploring. */
 .onboarding-tip{
   display:flex;align-items:flex-start;gap:9px;
-  margin-bottom:16px;padding:12px 12px 12px 13px;
-  background:rgba(85,230,208,.08);border:1px solid rgba(85,230,208,.35);border-radius:var(--r-md);
-  color:var(--text);font-size:12px;line-height:1.5;
+  margin-bottom:16px;padding:13px 13px 13px 14px;
+  background:rgba(52,211,153,.1);border:1px solid rgba(52,211,153,.35);border-radius:var(--r-md);
+  color:var(--text);font-size:12.5px;line-height:1.5;
 }
 .onboarding-tip.hidden{display:none}
 .onboarding-tip i.bi-info-circle{color:var(--cyan);font-size:14px;margin-top:1px;flex:0 0 auto}
@@ -112,90 +109,76 @@ body.stale .stamp{color:var(--yellow)}
 .subtitle{color:var(--muted);font-size:13px}
 
 /* ---------- Search ---------- */
-.search{display:flex;flex-direction:column;gap:2px;margin-bottom:20px}
-.search-fields{position:relative}
-.field{border-bottom:1px solid var(--line);padding:12px 2px;background:transparent}
-.field small{display:block;color:var(--muted);font-size:11px;margin-bottom:5px;font-weight:500}
-.field select{width:100%;background:transparent;color:var(--text);border:0;outline:0;padding:0;font-size:14.5px;font-weight:600;font-family:"Space Grotesk"}
+.search{display:flex;flex-direction:column;gap:10px;margin-bottom:20px;
+  background:var(--panel);border:1px solid var(--line);border-radius:var(--r-lg);
+  padding:6px;box-shadow:var(--shadow-sm);}
+.search-fields{position:relative;display:flex;flex-direction:column;gap:2px}
+.field{border-radius:var(--r-md);padding:10px 12px;background:var(--panel-alt)}
+.field small{display:block;color:var(--muted);font-size:11px;margin-bottom:4px;font-weight:600;text-transform:uppercase;letter-spacing:.02em}
+.field select{width:100%;background:transparent;color:var(--text);border:0;outline:0;padding:0;font-size:15px;font-weight:600;font-family:"Space Grotesk"}
 .field select option{background:var(--panel)}
 
-/* Sits at the boundary between the two fields (top:50% of their shared
-   container lands right in the gap between them), so reversing a
-   journey doesn't mean reopening both dropdowns from scratch. */
 .swap-btn{
-  position:absolute;right:6px;top:50%;transform:translateY(-50%);
-  width:30px;height:30px;border-radius:50%;
+  position:absolute;right:8px;top:50%;transform:translateY(-50%);
+  width:32px;height:32px;border-radius:50%;
   display:flex;align-items:center;justify-content:center;
   background:var(--panel);border:1px solid var(--line);color:var(--cyan);
-  font-size:13px;cursor:pointer;z-index:1;
-  transition:border-color .15s ease;
+  font-size:13px;cursor:pointer;z-index:1;box-shadow:var(--shadow-sm);
+  transition:border-color .15s ease,transform .25s ease;
 }
 .swap-btn:hover{border-color:var(--cyan)}
 .swap-btn i{display:block;transition:transform .25s ease}
 .swap-btn.swapped i{transform:rotate(180deg)}
-.btn{border:0;background:var(--cyan);color:#052019;border-radius:var(--r-md);padding:14px 16px;font-weight:700;font-size:14px;cursor:pointer;width:100%;margin-top:16px;font-family:"DM Sans"}
-.btn:hover{filter:brightness(1.05)}
-.btn:disabled{opacity:.45;cursor:default;filter:none}
+.btn{border:0;background:var(--cyan);color:var(--cyan-ink);border-radius:var(--r-md);padding:14px 16px;font-weight:700;font-size:14.5px;cursor:pointer;width:100%;margin-top:2px;font-family:"DM Sans";box-shadow:0 6px 18px rgba(52,211,153,.25);transition:filter .15s ease,transform .1s ease}
+.btn:hover{filter:brightness(1.08)}
+.btn:active{transform:translateY(1px)}
+.btn:disabled{opacity:.45;cursor:default;filter:none;box-shadow:none}
 
-.route-count{display:flex;justify-content:space-between;color:var(--muted);font-size:11.5px;margin:0 2px 14px}
-.route-count b{color:var(--text);font-weight:600}
+.route-count{display:flex;justify-content:space-between;color:var(--muted);font-size:11.5px;margin:0 2px 14px;font-weight:500}
+.route-count b{color:var(--text);font-weight:700}
 
-.notice{display:none;padding:12px 2px;border-top:1px solid var(--line);color:var(--red);font-size:12.5px;margin-bottom:16px;line-height:1.5}
+.notice{display:none;padding:12px 14px;border-radius:var(--r-md);background:rgba(248,113,113,.12);color:var(--red);font-size:12.5px;margin-bottom:16px;line-height:1.5}
 .notice.show{display:block}
-.notice.good{color:var(--green)}
+.notice.good{color:var(--green);background:rgba(74,222,128,.12)}
 
 /* ---------- Cards (used on Map / Prediction / Forecast pages) ---------- */
 .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r-lg);padding:20px;margin-bottom:16px}
 .card:last-child{margin-bottom:0}
 .card-title{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;gap:10px}
-.card-title h2{font:600 14px "Space Grotesk";margin:0}
-.tag{font-size:11px;color:var(--muted);white-space:nowrap}
+.card-title h2{font:700 14.5px "Space Grotesk";margin:0}
+.tag{font-size:11px;color:var(--muted);white-space:nowrap;font-weight:600}
 
 /* ---------- Bus list (fills rest of Predict page) ---------- */
 .bus-list{display:flex;flex-direction:column;gap:10px;flex:1;min-height:0}
-.bus{border:1px solid var(--line);border-radius:var(--r-md);padding:15px;cursor:pointer;transition:border-color .15s}
-.bus:hover,.bus.selected{border-color:var(--cyan)}
-/* The soonest arrival in the list, so the one bus most people came for
-   doesn't rely on them noticing it's sorted to the top. */
-.bus.next-up{border-color:rgba(85,230,208,.4)}
+.bus{background:var(--panel);border:1px solid var(--line);border-radius:var(--r-md);padding:15px;cursor:pointer;transition:border-color .15s,box-shadow .15s}
+.bus:hover{border-color:rgba(52,211,153,.4)}
+.bus.selected{border-color:var(--cyan);box-shadow:0 0 0 3px rgba(52,211,153,.14)}
+.bus.next-up{border-color:rgba(52,211,153,.35)}
 .bus.next-up.selected{border-color:var(--cyan)}
 .next-badge{
   display:inline-block;margin-left:2px;padding:2px 7px;
   font-size:9px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;
-  color:#052019;background:var(--cyan);border-radius:20px;vertical-align:middle;
+  color:var(--cyan-ink);background:var(--cyan);border-radius:20px;vertical-align:middle;
 }
 .bus-head{display:flex;justify-content:space-between;gap:12px}
 .route{display:flex;gap:9px;align-items:center}
-/* Route identity color, passed inline per-instance as --rc/--rc-bg/
-   --rc-border (see routeColorVars in main.js) so the same route reads
-   as the same color everywhere it appears - Predict, Board, Fleet -
-   instead of every badge looking identical regardless of route. Falls
-   back to the old flat look wherever those vars aren't set. */
 .number{
-  font:600 12px "Space Grotesk";padding:4px 7px;border-radius:var(--r-sm);
+  font:700 12px "Space Grotesk";padding:4px 7px;border-radius:var(--r-sm);
   color:var(--rc,var(--text));
-  background:var(--rc-bg,var(--bg));
+  background:var(--rc-bg,var(--panel-alt));
   border:1px solid var(--rc-border,var(--line));
 }
 .route-dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:6px;vertical-align:middle}
-.route-name{font-size:13px;color:var(--text)}
-/* Bigger and bolder than the label under it - the countdown is the
-   number people actually scan the list for, everything else is context. */
-.eta{text-align:right;font:700 18px "Space Grotesk"}
-/* The headline is its own node so the one-second tick can rewrite the
-   countdown without touching the label underneath it. */
+.route-name{font-size:13px;color:var(--text);font-weight:500}
+.eta{text-align:right;font:700 19px "Space Grotesk"}
 .eta .eta-main{display:block;font:inherit}
-.eta span{font-size:10.5px;color:var(--muted);font-family:"DM Sans";display:block;font-weight:400;margin-top:2px}
+.eta span{font-size:10.5px;color:var(--muted);font-family:"DM Sans";display:block;font-weight:500;margin-top:2px}
 .bus-meta{display:flex;align-items:center;gap:12px;margin-top:13px;flex-wrap:wrap}
-.mini-bar{height:5px;flex:1;background:var(--bg);border-radius:4px;overflow:hidden;min-width:60px}
+.mini-bar{height:6px;flex:1;background:var(--panel-alt);border-radius:4px;overflow:hidden;min-width:60px}
 .fill{height:100%;border-radius:4px}
-.status{font-size:12px;font-weight:600}
+.status{font-size:12px;font-weight:700}
 .confidence{font-size:11px;color:var(--muted);margin-bottom:12px}
 
-/* The expand panel used to be a display:none/block snap. Animating
-   grid-template-rows between 0fr and 1fr gives a real open/close
-   transition without ever having to know the panel's content height -
-   the inner wrapper is what actually gets clipped as it grows. */
 .expand{
   display:grid;grid-template-rows:0fr;
   border-top:1px solid transparent;margin-top:0;padding-top:0;
@@ -204,64 +187,51 @@ body.stale .stamp{color:var(--yellow)}
 .expand-inner{min-height:0;overflow:hidden}
 .bus.selected .expand{grid-template-rows:1fr;border-top-color:var(--line);margin-top:13px;padding-top:13px}
 .factors{display:flex;gap:16px;flex-wrap:wrap}
-.factor{font-size:11px;color:var(--muted)}
-.no-live-tag{font-size:11px;color:var(--yellow)}
+.factor{font-size:11px;color:var(--muted);font-weight:500}
+.no-live-tag{font-size:11px;color:var(--yellow);font-weight:600}
 
 .bus-actions{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
-.action-btn{flex:1;min-width:120px;padding:10px;text-align:center;border-radius:var(--r-sm);border:1px solid var(--line);background:transparent;color:var(--cyan);font-size:11.5px;font-weight:600;cursor:pointer}
-.action-btn:hover{border-color:var(--cyan)}
+.action-btn{flex:1;min-width:120px;padding:11px;text-align:center;border-radius:var(--r-sm);border:1px solid var(--line);background:transparent;color:var(--cyan);font-size:11.5px;font-weight:700;cursor:pointer;transition:border-color .15s,background .15s}
+.action-btn:hover{border-color:var(--cyan);background:rgba(52,211,153,.08)}
 .action-btn:disabled{opacity:.5;cursor:default}
 .action-btn.secondary{color:var(--text)}
 .report-row{display:flex;gap:8px;margin-top:8px}
-.report-row select{flex:1;background:transparent;color:var(--text);border:1px solid var(--line);border-radius:var(--r-sm);padding:9px 8px;font-size:11.5px}
-.action-msg{font-size:11px;color:var(--muted);margin-top:7px;min-height:14px}
+.report-row select{flex:1;background:var(--panel-alt);color:var(--text);border:1px solid var(--line);border-radius:var(--r-sm);padding:10px 8px;font-size:11.5px}
+.action-msg{font-size:11px;color:var(--muted);margin-top:7px;min-height:14px;font-weight:500}
 
 .empty{
   padding:40px 10px;text-align:center;color:var(--muted);font-size:12.5px;line-height:1.6;
   display:flex;flex-direction:column;align-items:center;gap:10px;
 }
 .empty i{font-size:23px;opacity:.5}
-/* A smaller variant for empty/loading states that sit inside an
-   existing card rather than filling a whole page. */
 .empty-inline{padding:14px 10px;gap:6px}
 .empty-inline i{font-size:16px}
 
 /* ---------- Crowding trend ---------- */
-/* Rising and falling say something different from a plain colour-free
-   reading, so they get the same semantic colours as the status text:
-   filling up leans toward the "leave later" tone, thinning out leans
-   toward "leave now". */
-.trend-rising{color:var(--orange);font-weight:600}
-.trend-falling{color:var(--green);font-weight:600}
+.trend-rising{color:var(--orange);font-weight:700}
+.trend-falling{color:var(--green);font-weight:700}
 .trend-steady{color:var(--muted)}
 
 /* ---------- Tracking panel (Map page) ---------- */
-.tracking-panel{border:1px solid var(--line);border-radius:var(--r-lg);padding:16px;margin-bottom:16px;font-size:11.5px;color:var(--muted)}
-.tracking-panel h4{margin:0 0 10px;font-size:12px;color:var(--text);font-weight:600}
+.tracking-panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--r-lg);padding:16px;margin-bottom:16px;font-size:11.5px;color:var(--muted)}
+.tracking-panel h4{margin:0 0 10px;font-size:12.5px;color:var(--text);font-weight:700}
 .tracking-row{display:flex;justify-content:space-between;margin:6px 0}
-.tracking-row b{color:var(--text);font-family:"Space Grotesk";font-weight:600}
-.track-btn{width:100%;margin-top:12px;padding:11px;border-radius:var(--r-sm);border:1px solid var(--line);background:transparent;color:var(--cyan);font-size:11.5px;font-weight:600;cursor:pointer}
-.track-btn:hover{border-color:var(--cyan)}
+.tracking-row b{color:var(--text);font-family:"Space Grotesk";font-weight:700}
+.track-btn{width:100%;margin-top:12px;padding:12px;border-radius:var(--r-sm);border:1px solid var(--line);background:transparent;color:var(--cyan);font-size:11.5px;font-weight:700;cursor:pointer;transition:border-color .15s,background .15s}
+.track-btn:hover{border-color:var(--cyan);background:rgba(52,211,153,.08)}
 .track-btn:disabled{opacity:.5;cursor:default}
-/* GPS successfully matched to a bus is good news (tracking is working),
-   so it gets the same green used for positive status elsewhere - cyan
-   stays reserved for brand/interactive elements, not outcomes. */
-.match-pill{display:inline-flex;align-items:center;gap:6px;margin-top:8px;font-size:11px;color:var(--green)}
+.match-pill{display:inline-flex;align-items:center;gap:6px;margin-top:8px;font-size:11px;color:var(--green);font-weight:600}
 
 /* ---------- Map ---------- */
 .map-card{margin-bottom:0}
-/* isolation:isolate boxes in Leaflet's internal pane z-indices (tiles,
-   markers, popups run up to 600-700) so they can't leak out and out-rank
-   the drawer/backdrop, which sit much lower in the app's own stacking
-   order but still need to paint above every page's content. */
-.live-map{height:52vh;min-height:280px;border-radius:var(--r-md);overflow:hidden;background:var(--bg);border:1px solid var(--line);isolation:isolate}
-.live-map .leaflet-tile-pane{filter:saturate(0.85) brightness(0.92)}
-.live-map .leaflet-control-attribution{background:#0a1219cc;color:var(--muted);font-size:9px}
+.live-map{height:52vh;min-height:280px;border-radius:var(--r-md);overflow:hidden;background:var(--panel-alt);border:1px solid var(--line);isolation:isolate}
+.live-map .leaflet-tile-pane{filter:saturate(0.85) brightness(0.85)}
+.live-map .leaflet-control-attribution{background:rgba(11,13,17,.8);color:var(--muted);font-size:9px}
 .live-map .leaflet-control-attribution a{color:var(--cyan)}
 .user-marker{background:transparent;border:none}
 .user-dot{width:14px;height:14px;border-radius:50%;background:var(--blue);border:2px solid var(--bg)}
 .bus-marker{background:transparent;border:none}
-.bus-dot{width:24px;height:24px;border-radius:50%;background:var(--panel);border:1px solid var(--cyan);display:grid;place-items:center;font-size:12px}
+.bus-dot{width:24px;height:24px;border-radius:50%;background:var(--panel);border:2px solid var(--cyan);display:grid;place-items:center;font-size:12px}
 .leaflet-popup-content-wrapper{background:var(--panel);color:var(--text);border-radius:var(--r-sm);border:1px solid var(--line)}
 .leaflet-popup-tip{background:var(--panel)}
 .leaflet-popup-content{font-size:12px;font-family:"DM Sans",sans-serif}
@@ -269,36 +239,33 @@ body.stale .stamp{color:var(--yellow)}
 /* ---------- Gauge / prediction detail ---------- */
 .gauge-card{display:grid;grid-template-columns:120px 1fr;gap:20px;align-items:center}
 .gauge{
-  width:112px;height:112px;border-radius:50%;background:conic-gradient(#20333f 0 100%);
+  width:112px;height:112px;border-radius:50%;background:conic-gradient(var(--line) 0 100%);
   display:grid;place-items:center;position:relative;
   transition:background .6s ease;
 }
 .gauge:after{content:"";position:absolute;width:88px;height:88px;border-radius:50%;background:var(--panel)}
 .gauge-content{z-index:1;text-align:center}
-.gauge-content b{font:600 25px "Space Grotesk";display:block}
-.gauge-content span{font-size:9.5px;color:var(--muted)}
-.level{font:600 19px "Space Grotesk";color:var(--muted)}
+.gauge-content b{font:700 25px "Space Grotesk";display:block;color:var(--text)}
+.gauge-content span{font-size:9.5px;color:var(--muted);font-weight:600;letter-spacing:.03em}
+.level{font:700 19px "Space Grotesk";color:var(--muted)}
 .detail{color:var(--muted);font-size:12.5px;line-height:1.55;margin-top:5px}
 .next{display:flex;justify-content:space-between;border-top:1px solid var(--line);margin-top:16px;padding-top:13px;font-size:12.5px}
-.next span{color:var(--cyan);font-weight:600}
+.next span{color:var(--cyan);font-weight:700}
 .next.next-sub{border-top:none;margin-top:0;padding-top:6px}
 
-/* The recommendation is a piece of good news ("here's your better
-   option"), so it's coloured green like other positive outcomes -
-   cyan is left to mean "tappable/selected" everywhere in the app. */
-.recommend{margin-top:16px;padding:14px 16px;border-left:2px solid var(--green);font-size:12px;line-height:1.55}
-.recommend b{font-size:12.5px}.recommend span{color:var(--green)}
+.recommend{margin-top:16px;padding:14px 16px;background:rgba(74,222,128,.08);border-left:3px solid var(--green);border-radius:0 var(--r-sm) var(--r-sm) 0;font-size:12px;line-height:1.55}
+.recommend b{font-size:12.5px}.recommend span{color:var(--green);font-weight:600}
 
 /* ---------- Forecast ---------- */
 .chart-wrap{height:200px}
 .history-grid{display:grid;grid-template-columns:1fr;gap:22px}
-.history-box h3{font-size:12.5px;margin:0 0 15px;color:var(--muted);font-weight:600}
+.history-box h3{font-size:12.5px;margin:0 0 15px;color:var(--muted);font-weight:700}
 .bars{display:flex;align-items:end;height:110px;gap:6px}
 .bwrap{height:100%;flex:1;display:flex;flex-direction:column;justify-content:end;align-items:center;gap:7px}
-.b{width:100%;border-radius:3px 3px 1px 1px;transition:height .4s}
-.bwrap label{font-size:9.5px;color:var(--muted)}
+.b{width:100%;border-radius:3px 3px 1px 1px;transition:height .4s;background:var(--panel-alt)}
+.bwrap label{font-size:9.5px;color:var(--muted);font-weight:500}
 .days{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
-.day{text-align:center;font-size:9px;color:var(--muted);padding:8px 1px}
+.day{text-align:center;font-size:9px;color:var(--muted);padding:8px 1px;font-weight:600}
 .circle{width:24px;height:24px;margin:6px auto;border-radius:50%;display:grid;place-items:center;color:#06110c;font-weight:700;font-size:9.5px}
 .hot .circle{background:var(--red)}.warm .circle{background:var(--yellow)}.cool .circle{background:var(--green)}
 
@@ -306,36 +273,35 @@ body.stale .stamp{color:var(--yellow)}
 .insight{padding:18px 0}
 .insight:first-child{padding-top:0}
 .insight:not(:first-child){border-top:1px solid var(--line)}
-.insight strong{font-size:13.5px;font-weight:600}
+.insight strong{font-size:13.5px;font-weight:700}
 .insight p{font-size:12.5px;color:var(--muted);line-height:1.55;margin:9px 0 0}
 
 /* ---------- Bottom tab bar ---------- */
-/* Four items only: the screens people hit constantly (Predict, Map,
-   Board) plus a single "More" entry point to the drawer below. Cramming
-   all seven destinations in here was the original complaint. */
+/* A darker, elevated nav rather than a flat strip the same flat shade
+   as the page behind it: the panel tone plus a filled pill for the
+   active tab reads clearly without needing a bright border line. */
 .tabbar{
-  flex:0 0 auto;display:flex;
+  flex:0 0 auto;display:flex;gap:4px;
+  background:var(--panel);
   border-top:1px solid var(--line);
-  background:var(--bg);
+  padding:8px 10px calc(8px + env(safe-area-inset-bottom,0px));
   position:relative;z-index:10;
 }
 .tab{
-  flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;gap:4px;
-  padding:11px 2px 9px;background:none;border:0;border-top:2px solid transparent;color:var(--muted);
-  font-size:10px;font-family:"DM Sans",sans-serif;cursor:pointer;margin-top:-1px;
+  flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;gap:3px;
+  padding:8px 2px;background:none;border:0;border-radius:var(--r-md);color:var(--muted);
+  font-size:10px;font-weight:600;font-family:"DM Sans",sans-serif;cursor:pointer;
+  transition:background .15s ease,color .15s ease;
 }
 .tab>span:last-child{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.tab-icon{font-size:16px;line-height:1;opacity:.8}
-.tab.active{color:var(--cyan);border-top-color:var(--cyan)}
+.tab-icon{font-size:18px;line-height:1;opacity:.85}
+.tab.active{color:var(--cyan);background:rgba(52,211,153,.12)}
 .tab.active .tab-icon{opacity:1}
 
 /* ---------- More drawer ---------- */
-/* A bottom sheet for the four less-visited screens, so the tab bar
-   stays uncluttered. Built from the same .card/.tab visual language as
-   the rest of the app rather than introducing a new pattern. */
 .drawer-backdrop{
   position:absolute;inset:0;z-index:40;
-  background:rgba(4,8,11,.55);
+  background:rgba(0,0,0,.6);
   opacity:0;pointer-events:none;transition:opacity .18s ease;
 }
 .drawer-backdrop.show{opacity:1;pointer-events:auto}
@@ -343,22 +309,22 @@ body.stale .stamp{color:var(--yellow)}
 .drawer{
   position:absolute;left:0;right:0;bottom:0;z-index:50;
   background:var(--panel);border:1px solid var(--line);border-bottom:0;
-  border-radius:18px 18px 0 0;
+  border-radius:20px 20px 0 0;
   padding:10px 20px calc(20px + env(safe-area-inset-bottom,0px));
   transform:translateY(100%);transition:transform .22s ease;
-  box-shadow:0 -12px 30px rgba(0,0,0,.35);
+  box-shadow:0 -20px 50px rgba(0,0,0,.5);
 }
 .drawer.open{transform:translateY(0)}
 .drawer-handle{width:36px;height:4px;border-radius:4px;background:var(--line);margin:2px auto 14px}
-.drawer-title{font:600 12px "Space Grotesk";color:var(--muted);letter-spacing:.02em;text-transform:uppercase;margin-bottom:14px}
+.drawer-title{font:700 12px "Space Grotesk";color:var(--muted);letter-spacing:.02em;text-transform:uppercase;margin-bottom:14px}
 .drawer-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
 .drawer-item{
   flex-direction:row !important;justify-content:flex-start;align-items:center;gap:10px !important;
-  border:1px solid var(--line);border-radius:var(--r-md);
+  border:1px solid var(--line);border-radius:var(--r-md);background:var(--panel-alt);
   padding:14px 12px !important;margin-top:0;color:var(--text);font-size:13px !important;
 }
 .drawer-item .tab-icon{font-size:17px;color:var(--cyan);opacity:1}
-.drawer-item.active{border-color:var(--cyan);color:var(--cyan)}
+.drawer-item.active{border-color:var(--cyan);color:var(--cyan);background:rgba(52,211,153,.1)}
 
 @media(prefers-reduced-motion:reduce){
   .drawer{transition:none}
@@ -367,26 +333,20 @@ body.stale .stamp{color:var(--yellow)}
 
 /* ---------- Slightly wider screens: give the phone shell some breathing room ---------- */
 @media(min-width:481px){
-  body{display:flex;justify-content:center}
+  body{display:flex;justify-content:center;align-items:center;padding:20px 0}
+  .app{height:min(860px,96dvh);border-radius:28px;box-shadow:var(--shadow-lg),0 0 0 1px var(--line);overflow:hidden}
 }
+
 /* ---------- Demo mode banner ---------- */
-/* Deliberately loud and always above the page content: a simulated
-   crowd figure that gets mistaken for a real one is worse than no
-   figure at all. Styled as an inset rounded alert - same visual
-   language as .weather-advisory - rather than a full-bleed bar, so the
-   two don't read as two different kinds of thing stacked on Predict. */
 .demo-banner{
   display:none;flex:0 0 auto;align-items:center;gap:8px;
-  margin:10px 20px 0;padding:9px 14px;
-  background:rgba(242,193,78,.12);border:1px solid var(--yellow);border-radius:var(--r-md);
-  color:var(--yellow);font-size:11.5px;font-weight:600;
+  margin:10px 18px 0;padding:10px 14px;
+  background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.4);border-radius:var(--r-md);
+  color:var(--yellow);font-size:11.5px;font-weight:700;
 }
 .demo-banner.show{display:flex}
 .demo-banner i{font-size:13px}
 
-/* Runs once each time either banner's "show" class is added - including
-   every step of the rotation above - so alternating between demo mode
-   and a weather advisory reads as a soft handoff, not a jump-cut. */
 @keyframes bannerIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:translateY(0)}}
 .demo-banner.show,.weather-advisory.show{animation:bannerIn .3s ease}
 @media(prefers-reduced-motion:reduce){
@@ -394,15 +354,11 @@ body.stale .stamp{color:var(--yellow)}
 }
 
 /* ---------- Manage page ---------- */
-/* Demo mode and the admin token are tucked behind a disclosure so the
-   two things most Manage visits are actually for - adding a bus,
-   checking the fleet - aren't sandwiched between a simulator toggle
-   and a password field. */
 .advanced-group{margin-top:2px}
 .advanced-group summary{
   list-style:none;cursor:pointer;user-select:none;
   display:flex;align-items:center;gap:8px;
-  padding:14px 2px;color:var(--muted);font-size:12.5px;font-weight:600;
+  padding:14px 2px;color:var(--muted);font-size:12.5px;font-weight:700;
 }
 .advanced-group summary::-webkit-details-marker{display:none}
 .advanced-group summary i{font-size:10px;transition:transform .18s ease}
@@ -413,50 +369,48 @@ body.stale .stamp{color:var(--yellow)}
 .card-note{font-size:12px;color:var(--muted);line-height:1.55;margin:0 0 14px}
 .card-note code{
   font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;
-  background:var(--bg);border:1px solid var(--line);border-radius:4px;padding:1px 5px;
+  background:var(--panel-alt);border:1px solid var(--line);border-radius:4px;padding:1px 5px;
 }
 
 .form-grid{display:flex;flex-direction:column;gap:12px;margin-bottom:14px}
 .form-field{display:block}
-.form-field small{display:block;color:var(--muted);font-size:11px;margin-bottom:5px;font-weight:500}
+.form-field small{display:block;color:var(--muted);font-size:11px;margin-bottom:5px;font-weight:600}
 .form-field input,.form-field select{
-  width:100%;background:var(--bg);color:var(--text);
+  width:100%;background:var(--panel-alt);color:var(--text);
   border:1px solid var(--line);border-radius:var(--r-sm);
   padding:11px 10px;font-size:13px;font-family:"DM Sans",sans-serif;outline:0;
 }
 .form-field input:focus,.form-field select:focus{border-color:var(--cyan)}
-.form-field input::placeholder{color:#4d6473}
+.form-field input::placeholder{color:#5b6472}
 
 /* ---------- Fleet list ---------- */
-.fleet-row{border:1px solid var(--line);border-radius:var(--r-md);padding:13px;margin-bottom:9px}
+.fleet-row{border:1px solid var(--line);border-radius:var(--r-md);padding:13px;margin-bottom:9px;background:var(--panel)}
 .fleet-row:last-child{margin-bottom:0}
 .fleet-row.pending{border-color:var(--red)}
 .fleet-head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
-.fleet-name{font:600 13.5px "Space Grotesk"}
+.fleet-name{font:700 13.5px "Space Grotesk"}
 .fleet-sub{font-size:11px;color:var(--muted);margin-top:3px}
 .icon-btn{
   flex:0 0 auto;background:transparent;border:1px solid var(--line);
   border-radius:var(--r-sm);color:var(--muted);
   padding:7px 10px;font-size:13px;cursor:pointer;line-height:1;
 }
-.icon-btn:hover{border-color:var(--red);color:var(--red)}
+.icon-btn:hover{border-color:var(--red);color:var(--red);background:rgba(248,113,113,.08)}
 
 .delete-confirm{border-top:1px solid var(--line);margin-top:12px;padding-top:12px}
 .delete-confirm small{display:block;font-size:11px;color:var(--muted);line-height:1.5;margin-bottom:8px}
 .delete-confirm small b{color:var(--text);font-family:"Space Grotesk"}
 .delete-confirm input{
-  width:100%;background:var(--bg);color:var(--text);
+  width:100%;background:var(--panel-alt);color:var(--text);
   border:1px solid var(--line);border-radius:var(--r-sm);
   padding:10px;font-size:12.5px;font-family:"Space Grotesk";outline:0;margin-bottom:8px;
 }
 .delete-confirm input:focus{border-color:var(--red)}
 
-/* Destructive actions read as destructive everywhere they appear. */
 .action-btn.danger,.track-btn.danger{color:var(--red)}
-.action-btn.danger:hover,.track-btn.danger:hover{border-color:var(--red)}
+.action-btn.danger:hover,.track-btn.danger:hover{border-color:var(--red);background:rgba(248,113,113,.08)}
 
-/* The bus you're currently riding, so Check out is easy to find. */
-.bus.riding{border-color:var(--cyan);background:rgba(85,230,208,.04)}
+.bus.riding{border-color:var(--cyan);background:rgba(52,211,153,.05)}
 
 /* ---------- Simulated fleet readout ---------- */
 .sim-list{margin-top:12px}
@@ -465,13 +419,9 @@ body.stale .stamp{color:var(--yellow)}
   font-size:11px;color:var(--muted);
   padding:7px 0;border-top:1px solid var(--line);
 }
-.sim-row span:first-child{color:var(--text);font-family:"Space Grotesk";font-weight:600}
-
+.sim-row span:first-child{color:var(--text);font-family:"Space Grotesk";font-weight:700}
 
 /* ---------- Arrival confidence colouring ---------- */
-/* The headline figure is tinted by how much the estimate can be
-   trusted, so a high-confidence "3 min" doesn't look identical to a
-   guess or to "already passed". */
 .eta.good{color:var(--green)}
 .eta.ok{color:var(--text)}
 .eta.muted{color:var(--muted)}
@@ -479,7 +429,7 @@ body.stale .stamp{color:var(--yellow)}
 
 /* ---------- Live arrivals board ---------- */
 .board-list{display:flex;flex-direction:column;gap:10px;flex:1;min-height:0}
-.arrival{border:1px solid var(--line);border-radius:var(--r-md);padding:15px}
+.arrival{background:var(--panel);border:1px solid var(--line);border-radius:var(--r-md);padding:15px}
 .arrival-head{display:flex;justify-content:space-between;gap:12px}
 .arrival-note{
   margin-top:10px;padding-top:10px;border-top:1px solid var(--line);
@@ -488,57 +438,48 @@ body.stale .stamp{color:var(--yellow)}
 
 .toggle-row{
   display:flex;align-items:center;gap:9px;
-  margin:14px 2px 4px;font-size:11.5px;color:var(--muted);cursor:pointer;
+  margin:14px 2px 4px;font-size:11.5px;color:var(--muted);cursor:pointer;font-weight:500;
 }
-.toggle-row input{accent-color:var(--cyan);width:15px;height:15px;cursor:pointer}
+.toggle-row input{accent-color:var(--cyan);width:16px;height:16px;cursor:pointer}
 
 /* ---------- Weather ---------- */
-.weather-chip{display:flex;align-items:center;gap:5px;color:var(--muted);font-size:11px}
+.weather-chip{display:flex;align-items:center;gap:5px;color:var(--muted);font-size:11px;font-weight:500}
 .weather-chip i{font-size:12px;color:var(--cyan)}
-/* Now a global strip (see index.html) rather than scoped to the Predict
-   page, so it uses the same inset-margin treatment as .demo-banner
-   instead of the page's own inner padding. */
 .weather-advisory{
   display:none;align-items:flex-start;gap:9px;
-  margin:10px 20px 0;padding:11px 13px;
-  background:rgba(110,168,250,.1);border:1px solid var(--blue);border-radius:var(--r-md);
+  margin:10px 18px 0;padding:11px 13px;
+  background:rgba(96,165,250,.1);border:1px solid rgba(96,165,250,.4);border-radius:var(--r-md);
   color:var(--blue);font-size:12px;line-height:1.5;
 }
 .weather-advisory.show{display:flex}
 .weather-advisory i{font-size:13px;margin-top:1px;flex:0 0 auto}
-.weather-advisory.severe{background:rgba(242,99,94,.1);border-color:var(--red);color:var(--red)}
+.weather-advisory.severe{background:rgba(248,113,113,.1);border-color:rgba(248,113,113,.4);color:var(--red)}
 
 /* ---------- Outage reporting ---------- */
-/* A bus reported out of service reads as a warning wherever it
-   appears, in the same red used for destructive actions elsewhere. */
 .outage-badge{
   display:inline-flex;align-items:center;gap:5px;
-  font-size:10.5px;font-weight:600;color:var(--red);
-  border:1px solid var(--red);border-radius:var(--r-sm);
+  font-size:10.5px;font-weight:700;color:var(--red);
+  border:1px solid rgba(248,113,113,.4);background:rgba(248,113,113,.1);border-radius:var(--r-sm);
   padding:3px 7px;margin-top:9px;
 }
-.outage-card .tag.reported{color:var(--red);font-weight:600}
+.outage-card .tag.reported{color:var(--red);font-weight:700}
 .outage-banner{
   display:none;padding:12px 14px;margin-bottom:14px;
-  background:rgba(242,99,94,.1);border:1px solid var(--red);border-radius:var(--r-md);
+  background:rgba(248,113,113,.1);border:1px solid rgba(248,113,113,.4);border-radius:var(--r-md);
   color:var(--red);font-size:12px;line-height:1.55;
 }
 .outage-banner.show{display:block}
 
 /* ---------- Skeleton loaders ---------- */
-/* Shaped like the content that's about to land (a bus card, a fleet
-   row, a forecast bar) so the wait reads as "this is loading" rather
-   than a generic spinner, and the layout doesn't jump once real
-   content replaces it. */
 .skeleton-block{
   border-radius:6px;
-  background:linear-gradient(100deg,var(--line) 30%,#2a4356 50%,var(--line) 70%);
+  background:linear-gradient(100deg,var(--line) 30%,var(--sk-shine) 50%,var(--line) 70%);
   background-size:250% 100%;
   animation:skeletonShimmer 1.4s ease-in-out infinite;
 }
 @keyframes skeletonShimmer{0%{background-position:200% 0}100%{background-position:-50% 0}}
 
-.skeleton-bus{border:1px solid var(--line);border-radius:var(--r-md);padding:15px;margin-bottom:10px}
+.skeleton-bus{border:1px solid var(--line);border-radius:var(--r-md);padding:15px;margin-bottom:10px;background:var(--panel)}
 .skeleton-bus .sk-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
 .skeleton-bus .sk-number{width:38px;height:22px}
 .skeleton-bus .sk-name{width:90px;height:14px;margin-left:9px}
