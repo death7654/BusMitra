@@ -23,10 +23,7 @@ use tauri::{AppHandle, Emitter, Manager};
 //   BUSMITRA_API_BASE_URL=https://busmitra-api.fly.dev cargo tauri build
 // The fallback below is only used when that variable isn't set, so a
 // dev build with no env var still behaves exactly as before.
-const API_BASE_URL: &str = match option_env!("BUSMITRA_API_BASE_URL") {
-    Some(url) => url,
-    None => "http://10.0.2.2:8000",
-};
+const API_BASE_URL: &str = "https://busmitra-ivaq.onrender.com";
 
 // -----------------------------------------------------------------------
 // App state
@@ -1052,8 +1049,13 @@ async fn plan_journey(
 
     json_or_error::<JourneyPlanResponse>(res, "journey plan").await
 }
-#[cfg_attr(mobile, tauri::mobile_entry_point)]
 
+#[tauri::command]
+fn get_base_api_url() -> String {
+    API_BASE_URL.to_string()
+}
+
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
@@ -1086,6 +1088,7 @@ pub fn run() {
             start_demo,
             stop_demo,
             reset_demo,
+            get_base_api_url,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

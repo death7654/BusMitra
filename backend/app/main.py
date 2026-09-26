@@ -23,6 +23,7 @@ from .routers import journeys as journeys_router
 from .routers import calibration as calibration_router
 from .routers import outage as outage_router
 from .routers import weather as weather_router
+from .routers import tiles as tiles_router
 from .services import demo as demo_service
 from .services import learning as learning_service
 from .services import observations as observation_service
@@ -242,7 +243,7 @@ async def stop_demo_simulation():
 
 # Register routers
 app.include_router(tracking.router)
-
+app.include_router(tiles_router.router)
 
 @app.get("/health", response_model=HealthResponse)
 def health_check(db: Session = Depends(get_db)):

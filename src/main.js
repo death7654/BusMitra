@@ -62,6 +62,92 @@ function flash(el) {
 }
 
 // ---------------------------------------------------------------------
+// Route identity colors
+// ---------------------------------------------------------------------
+// A small fixed palette, picked to stay clear of the semantic colors
+// used elsewhere (green/yellow/orange/red for crowd status, blue for
+// weather, cyan for brand/interactive) so a route's color never gets
+// mistaken for a status. Same route number always hashes to the same
+// entry, so a route reads as the same color on Predict, Board and Fleet.
+const ROUTE_PALETTE = ["#b98cf2", "#f28cc7", "#8cc7f2", "#f2b88c", "#8cf2c7", "#c7c2f2", "#f28ca0", "#a0d68c"];
+
+function routeColor(routeNumber) {
+  const s = String(routeNumber ?? "");
+  let hash = 0;
+  for (let i = 0; i < s.length; i++) hash = (hash * 31 + s.charCodeAt(i)) >>> 0;
+  return ROUTE_PALETTE[hash % ROUTE_PALETTE.length];
+}
+
+// Returns a style="" attribute (custom properties only - see the
+// .number rule in styles.css) so callers just splice it into a
+// template literal wherever a route-number badge is rendered.
+function routeColorVars(routeNumber) {
+  const hex = routeColor(routeNumber);
+  return `style="--rc:${hex};--rc-bg:${hex}1a;--rc-border:${hex}66"`;
+}
+
+// ---------------------------------------------------------------------
+// Haptics
+// ---------------------------------------------------------------------
+// Prefer a native Tauri haptics plugin if one happens to be registered,
+// but never assume it exists - fall back to the standard Web Vibration
+// API, and no-op silently on platforms/webviews that support neither
+// (desktop, iOS Safari webviews, etc). A confirmation beep nobody feels
+// is fine; a thrown error from a missing plugin is not.
+function haptic(pattern = 10, tauriStyle = "light") {
+  try {
+    const tauriHaptics = window.__TAURI__?.haptics;
+    if (tauriHaptics?.impactFeedback) {
+      tauriHaptics.impactFeedback(tauriStyle).catch(() => {});
+      return;
+    }
+  } catch {}
+  try {
+    navigator.vibrate?.(pattern);
+  } catch {}
+}
+
+// ---------------------------------------------------------------------
+// Skeleton loaders - shaped like the content that's about to replace
+// them so the wait reads as progress rather than a blank/generic spinner.
+// ---------------------------------------------------------------------
+function skeletonBusList(count = 3) {
+  const row = `
+    <div class="skeleton-bus">
+      <div class="sk-row">
+        <div class="sk-row" style="margin-bottom:0">
+          <div class="skeleton-block sk-number"></div>
+          <div class="skeleton-block sk-name"></div>
+        </div>
+        <div class="skeleton-block sk-eta"></div>
+      </div>
+      <div class="skeleton-block sk-bar"></div>
+    </div>`;
+  return row.repeat(count);
+}
+
+function skeletonFleetList(count = 4) {
+  const row = `
+    <div class="skeleton-fleet">
+      <div class="skeleton-block sk-dot"></div>
+      <div class="sk-lines">
+        <div class="skeleton-block sk-line"></div>
+        <div class="skeleton-block sk-line"></div>
+      </div>
+    </div>`;
+  return row.repeat(count);
+}
+
+function skeletonBars(count = 8) {
+  const heights = [40, 65, 30, 80, 55, 70, 35, 60, 45, 75, 50, 25];
+  let out = '<div class="skeleton-bars">';
+  for (let i = 0; i < count; i++) {
+    out += `<div class="skeleton-block sk-col" style="height:${heights[i % heights.length]}%"></div>`;
+  }
+  return out + "</div>";
+}
+
+// ---------------------------------------------------------------------
 // State
 // ---------------------------------------------------------------------
 let routes = [];        // from get_routes
@@ -95,7 +181,7 @@ const WEATHER_REFRESH_MS = 10 * 60 * 1000; // matches the backend's own cache TT
 let lastKnownPosition = null; // {latitude, longitude} from live tracking, if any
 
 // DOM refs (filled in on DOMContentLoaded)
-let fromEl, toEl, predictBtn, noticeEl, countEl, busListEl;
+let fromEl, toEl, predictBtn, swapBtnEl, noticeEl, countEl, busListEl;
 let selectedTagEl, gaugeEl, gaugePctEl, levelEl, detailEl, nextEl, nextEtaEl;
 let recommendTextEl, historyTagEl, timeBarsEl, daysEl;
 let forecastTagEl, chartEl, patternEl, betterEl, confidenceInfoEl;
@@ -554,6 +640,10 @@ function checkArrivalAlarms() {
 
     alarm.fired = true;
     persistAlarms();
+    // A stronger pattern than the light confirmation taps elsewhere -
+    // this is the one haptic that fires without the person tapping
+    // anything first, so it needs to actually get noticed.
+    haptic([30, 60, 30], "heavy");
 
     invoke("send_user_notification", {
       title: `${alarm.busNumber} is nearly at ${alarm.stopName}`,
@@ -577,6 +667,7 @@ function checkArrivalAlarms() {
 // ---------------------------------------------------------------------
 const CACHE_KEY = "BusMitra:snapshot:v1";
 const ALARM_KEY = "BusMitra:alarms:v1";
+const LAST_SEARCH_KEY = "BusMitra:last-search:v1";
 
 // Past this, cached figures are archaeology and showing them would be
 // worse than showing nothing.
@@ -633,7 +724,7 @@ function renderCachedSnapshot() {
       .map(
         (c) => `<div class="bus" style="opacity:.6">
           <div class="bus-head">
-            <div class="route"><div class="number">${esc(c.routeNumber)}</div>
+            <div class="route"><div class="number" ${routeColorVars(c.routeNumber)}>${esc(c.routeNumber)}</div>
               <div class="route-name">${esc(c.busNumber)}</div></div>
             <div class="eta muted"><b class="eta-main">${
               c.etaSeconds != null ? Math.round(c.etaSeconds / 60) + " min" : "\u2014"
@@ -664,6 +755,55 @@ function restoreAlarms() {
   } catch {
     // Non-fatal.
   }
+}
+
+// Remembers the last journey searched, so a returning rider doesn't
+// have to reselect two stops from scratch every time they open the app.
+function saveLastSearch(from, to) {
+  try {
+    localStorage.setItem(LAST_SEARCH_KEY, JSON.stringify({ from, to }));
+  } catch {
+    // Non-fatal.
+  }
+}
+
+function loadLastSearch() {
+  try {
+    return JSON.parse(localStorage.getItem(LAST_SEARCH_KEY) || "null");
+  } catch {
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------
+// First-run onboarding tip
+// ---------------------------------------------------------------------
+const ONBOARDING_KEY = "BusMitra:onboarding-dismissed:v1";
+
+function setupOnboardingTip() {
+  const tip = document.getElementById("onboarding-tip");
+  const dismissBtn = document.getElementById("onboarding-dismiss");
+  if (!tip) return;
+
+  let dismissed = false;
+  try {
+    dismissed = localStorage.getItem(ONBOARDING_KEY) === "1";
+  } catch {
+    // Non-fatal - worst case the tip shows again next launch.
+  }
+  if (dismissed) {
+    tip.classList.add("hidden");
+    return;
+  }
+
+  dismissBtn?.addEventListener("click", () => {
+    tip.classList.add("hidden");
+    try {
+      localStorage.setItem(ONBOARDING_KEY, "1");
+    } catch {
+      // Non-fatal.
+    }
+  });
 }
 
 // ---------------------------------------------------------------------
@@ -741,19 +881,19 @@ const userIcon = () =>
 const busIcon = () =>
   L.divIcon({ className: "bus-marker", html: '<div class="bus-dot">\u{1F68C}</div>', iconSize: [26, 26] });
 
-function initMap() {
+async function initMap() {
   if (!liveMapEl || typeof L === "undefined") return;
   map = L.map(liveMapEl, { zoomControl: true }).setView([20, 0], 2);
-  L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+
+  // Tiles come through our own backend, not CARTO directly, so the
+  // CARTO API key stays server-side only - read from an env var on
+  // Render, never sent to this webview or committed anywhere.
+  const apiBase = await invoke("get_api_base_url");
+  L.tileLayer(`${apiBase}/api/tiles/voyager/{z}/{x}/{y}.png`, {
     maxZoom: 19,
     attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
   }).addTo(map);
 
-  // Leaflet mis-measures its container if the map is created while the
-  // layout is still settling (webfonts loading, sidebar animating in,
-  // etc). Re-measure a couple of times after startup, on every window
-  // resize, and whenever the tab/window regains visibility, so the tile
-  // grid never gets stuck showing a stale/blank size.
   setTimeout(() => map.invalidateSize(), 300);
   setTimeout(() => map.invalidateSize(), 1000);
   window.addEventListener("resize", () => map.invalidateSize());
@@ -1044,6 +1184,8 @@ function renderWeather() {
 // ---------------------------------------------------------------------
 // Backend data loading
 // ---------------------------------------------------------------------
+let startupAutoPredictDone = false;
+
 async function loadRoutes() {
   try {
     routes = await invoke("get_routes");
@@ -1053,6 +1195,18 @@ async function loadRoutes() {
     populateRouteSelect();
     populateBoardStops();
     fitMapToStops();
+
+    // First successful load only: if the restored from/to (see
+    // populateStopSelects) matches the last journey actually searched,
+    // run it automatically so returning riders see results right away
+    // instead of an empty list they have to re-trigger themselves.
+    if (!startupAutoPredictDone) {
+      startupAutoPredictDone = true;
+      const lastSearch = loadLastSearch();
+      if (lastSearch && fromEl.value === lastSearch.from && toEl.value === lastSearch.to) {
+        runPredict();
+      }
+    }
   } catch (err) {
     refreshFailures++;
     markBackendDown(err);
@@ -1073,9 +1227,13 @@ function populateStopSelects() {
   }
   // Adding or deleting a bus reloads the routes, and rebuilding these
   // selects from scratch would silently throw away whatever journey
-  // the user had picked. Put it back when the stops still exist.
-  const previousFrom = fromEl.value;
-  const previousTo = toEl.value;
+  // the user had picked. Put it back when the stops still exist. On the
+  // very first population (nothing picked yet this session) fall back
+  // to the last journey the person actually searched, so the app opens
+  // ready to go instead of empty.
+  const lastSearch = !fromEl.value && !toEl.value ? loadLastSearch() : null;
+  const previousFrom = fromEl.value || lastSearch?.from || "";
+  const previousTo = toEl.value || lastSearch?.to || "";
 
   const optionsHtml = names.map((n) => `<option value="${esc(n)}">${esc(n)}</option>`).join("");
   fromEl.innerHTML = optionsHtml;
@@ -1295,6 +1453,8 @@ async function runPredict() {
 
   predictBtn.disabled = true;
   predictBtn.textContent = "Loading\u2026";
+  busListEl.innerHTML = skeletonBusList(Math.min(found.length, 4));
+  saveLastSearch(fromName, toName);
 
   const results = await fetchBusStates(found);
 
@@ -1419,7 +1579,7 @@ function renderList() {
       const open = selectedBusId === c.bus.id;
       if (c.error) {
         return `<div class="bus" data-id="${c.bus.id}">
-          <div class="bus-head"><div class="route"><div class="number">${esc(c.route.route_number)}</div><div class="route-name">${esc(c.bus.bus_number)}</div></div></div>
+          <div class="bus-head"><div class="route"><div class="number" ${routeColorVars(c.route.route_number)}>${esc(c.route.route_number)}</div><div class="route-name">${esc(c.bus.bus_number)}</div></div></div>
           <div class="bus-meta"><span style="color:var(--red);font-size:11px">Couldn't load this bus (${esc(c.error)})</span></div>
         </div>`;
       }
@@ -1463,7 +1623,7 @@ function renderList() {
 
       return `<div class="bus ${open ? "selected" : ""} ${riding ? "riding" : ""} ${isNext ? "next-up" : ""}" data-id="${c.bus.id}">
         <div class="bus-head">
-          <div class="route"><div class="number">${esc(c.route.route_number)}</div><div class="route-name">${esc(c.bus.bus_number)}${isNext ? ' <span class="next-badge">Next</span>' : ""}</div></div>
+          <div class="route"><div class="number" ${routeColorVars(c.route.route_number)}>${esc(c.route.route_number)}</div><div class="route-name">${esc(c.bus.bus_number)}${isNext ? ' <span class="next-badge">Next</span>' : ""}</div></div>
           <div class="eta ${etaClass(c.eta)}"><b class="eta-main"${etaAttrs}>${etaMain}</b><span>${etaSub}</span></div>
         </div>
         ${outageBadge}
@@ -1633,6 +1793,7 @@ async function doCheckIn(busId) {
     currentRide = { bus_id: res.bus_id, bus_number: res.bus_number };
     renderRideControls();
     setRideMessage(res.message, busId);
+    haptic();
     await refreshBusNumbers(busId);
   } catch (err) {
     setRideMessage(`Check-in failed: ${err}`, busId);
@@ -1649,6 +1810,7 @@ async function doCheckOut(busId) {
     currentRide = null;
     renderRideControls();
     setRideMessage(res.message, leftBusId);
+    haptic();
     await refreshBusNumbers(leftBusId);
   } catch (err) {
     // A 404 means the backend has no open ride for us - our local idea
@@ -1693,6 +1855,7 @@ async function doReport(busId, crowdLevel) {
     // The backend returns the recomputed figure, so the reporter sees
     // their contribution land rather than a generic acknowledgement.
     if (msgEl) msgEl.textContent = res.message;
+    haptic();
 
     await refreshBusNumbers(busId);
   } catch (err) {
@@ -1763,6 +1926,7 @@ async function doOutageReport() {
     if (outageMsgEl) outageMsgEl.textContent = res.message;
     if (c.status) c.status.outage = res.status;
     renderOutage(res.status);
+    haptic();
   } catch (err) {
     if (outageMsgEl) outageMsgEl.textContent = `Report failed: ${err}`;
   } finally {
@@ -1773,10 +1937,17 @@ async function doOutageReport() {
 // ---------------------------------------------------------------------
 // Fleet management (Manage page)
 // ---------------------------------------------------------------------
+let fleetEverLoaded = false;
+
 async function loadFleet() {
+  // Only the very first load gets a skeleton - loadFleet also runs on
+  // every periodic Manage-page refresh, and replacing an already-visible
+  // list with a skeleton on each poll would just be flicker.
+  if (!fleetEverLoaded) fleetListEl.innerHTML = skeletonFleetList();
   try {
     fleet = await invoke("list_buses");
     markBackendUp();
+    fleetEverLoaded = true;
     renderFleet();
   } catch (err) {
     refreshFailures++;
@@ -1817,7 +1988,7 @@ function renderFleet() {
         <div class="fleet-head">
           <div>
             <div class="fleet-name">${esc(bus.bus_number)}</div>
-            <div class="fleet-sub">${esc(bus.route_number)} &middot; ${esc(bus.route_name)}</div>
+            <div class="fleet-sub"><span class="route-dot" style="background:${routeColor(bus.route_number)}"></span>${esc(bus.route_number)} &middot; ${esc(bus.route_name)}</div>
             <div class="fleet-sub">${bus.capacity} capacity &middot; ${onboard} on board now</div>
           </div>
           ${pending ? "" : `<button class="icon-btn" data-del="${bus.id}" title="Delete ${esc(bus.bus_number)}"><i class="bi bi-trash"></i></button>`}
@@ -2028,7 +2199,7 @@ async function loadBoard() {
         return `<div class="arrival">
           <div class="arrival-head">
             <div class="route">
-              <div class="number">${esc(a.route_number)}</div>
+              <div class="number" ${routeColorVars(a.route_number)}>${esc(a.route_number)}</div>
               <div class="route-name">${esc(a.bus_number)}</div>
             </div>
             <div class="eta ${etaClass(a.eta)}"><b class="eta-main"${etaAttrs}>${etaHeadline(a.eta)}</b>
@@ -2440,6 +2611,7 @@ async function maybeNotify(status) {
         title: "Your bus is filling up",
         body: `${status.bus_number} is now at ${Math.round(status.overall_fullness)}% full.`,
       });
+      haptic([30, 60, 30], "heavy");
     } catch {
       // Notification permission may be denied - not fatal, just skip it.
     }
@@ -2490,6 +2662,7 @@ window.addEventListener("DOMContentLoaded", () => {
   fromEl = document.getElementById("from");
   toEl = document.getElementById("to");
   predictBtn = document.getElementById("predict");
+  swapBtnEl = document.getElementById("swap-btn");
   noticeEl = document.getElementById("notice");
   countEl = document.getElementById("count");
   busListEl = document.getElementById("bus-list");
@@ -2594,6 +2767,19 @@ window.addEventListener("DOMContentLoaded", () => {
   });
 
   predictBtn.addEventListener("click", runPredict);
+
+  // Reversing a journey shouldn't mean reopening both dropdowns from
+  // scratch. Swaps the two select values directly; the existing "from
+  // changed" listener above already keeps from/to from colliding.
+  swapBtnEl?.addEventListener("click", () => {
+    const a = fromEl.value;
+    fromEl.value = toEl.value;
+    toEl.value = a;
+    swapBtnEl.classList.toggle("swapped");
+    haptic();
+  });
+
+  setupOnboardingTip();
 
   boardStopEl.addEventListener("change", loadBoard);
   boardIncludeEl.addEventListener("change", loadBoard);

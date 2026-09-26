@@ -89,14 +89,50 @@ body.stale .stamp{color:var(--yellow)}
 .page-head{margin-bottom:22px}
 .eyebrow{font-size:12px;color:var(--muted);font-weight:500}
 .page-head h1{font:600 24px "Space Grotesk";letter-spacing:-.3px;margin:4px 0 0;line-height:1.25}
+
+/* ---------- Onboarding tip ---------- */
+/* Shown once for first-time openers, then gone for good (see
+   dismissOnboardingTip). The app has real depth - demo mode, live
+   tracking, alarms, outage reports - that isn't obvious from Predict
+   alone, so this points at just enough of it to get someone exploring. */
+.onboarding-tip{
+  display:flex;align-items:flex-start;gap:9px;
+  margin-bottom:16px;padding:12px 12px 12px 13px;
+  background:rgba(85,230,208,.08);border:1px solid rgba(85,230,208,.35);border-radius:var(--r-md);
+  color:var(--text);font-size:12px;line-height:1.5;
+}
+.onboarding-tip.hidden{display:none}
+.onboarding-tip i.bi-info-circle{color:var(--cyan);font-size:14px;margin-top:1px;flex:0 0 auto}
+.onboarding-tip span{flex:1 1 auto}
+.onboarding-tip button{
+  flex:0 0 auto;background:none;border:0;color:var(--muted);cursor:pointer;
+  padding:0;margin:-2px -2px 0 0;font-size:15px;line-height:1;
+}
+.onboarding-tip button:hover{color:var(--text)}
 .subtitle{color:var(--muted);font-size:13px}
 
 /* ---------- Search ---------- */
 .search{display:flex;flex-direction:column;gap:2px;margin-bottom:20px}
+.search-fields{position:relative}
 .field{border-bottom:1px solid var(--line);padding:12px 2px;background:transparent}
 .field small{display:block;color:var(--muted);font-size:11px;margin-bottom:5px;font-weight:500}
 .field select{width:100%;background:transparent;color:var(--text);border:0;outline:0;padding:0;font-size:14.5px;font-weight:600;font-family:"Space Grotesk"}
 .field select option{background:var(--panel)}
+
+/* Sits at the boundary between the two fields (top:50% of their shared
+   container lands right in the gap between them), so reversing a
+   journey doesn't mean reopening both dropdowns from scratch. */
+.swap-btn{
+  position:absolute;right:6px;top:50%;transform:translateY(-50%);
+  width:30px;height:30px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  background:var(--panel);border:1px solid var(--line);color:var(--cyan);
+  font-size:13px;cursor:pointer;z-index:1;
+  transition:border-color .15s ease;
+}
+.swap-btn:hover{border-color:var(--cyan)}
+.swap-btn i{display:block;transition:transform .25s ease}
+.swap-btn.swapped i{transform:rotate(180deg)}
 .btn{border:0;background:var(--cyan);color:#052019;border-radius:var(--r-md);padding:14px 16px;font-weight:700;font-size:14px;cursor:pointer;width:100%;margin-top:16px;font-family:"DM Sans"}
 .btn:hover{filter:brightness(1.05)}
 .btn:disabled{opacity:.45;cursor:default;filter:none}
@@ -130,7 +166,18 @@ body.stale .stamp{color:var(--yellow)}
 }
 .bus-head{display:flex;justify-content:space-between;gap:12px}
 .route{display:flex;gap:9px;align-items:center}
-.number{font:600 12px "Space Grotesk";background:var(--bg);border:1px solid var(--line);padding:4px 7px;border-radius:var(--r-sm)}
+/* Route identity color, passed inline per-instance as --rc/--rc-bg/
+   --rc-border (see routeColorVars in main.js) so the same route reads
+   as the same color everywhere it appears - Predict, Board, Fleet -
+   instead of every badge looking identical regardless of route. Falls
+   back to the old flat look wherever those vars aren't set. */
+.number{
+  font:600 12px "Space Grotesk";padding:4px 7px;border-radius:var(--r-sm);
+  color:var(--rc,var(--text));
+  background:var(--rc-bg,var(--bg));
+  border:1px solid var(--rc-border,var(--line));
+}
+.route-dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:6px;vertical-align:middle}
 .route-name{font-size:13px;color:var(--text)}
 /* Bigger and bolder than the label under it - the countdown is the
    number people actually scan the list for, everything else is context. */
@@ -477,3 +524,36 @@ body.stale .stamp{color:var(--yellow)}
   color:var(--red);font-size:12px;line-height:1.55;
 }
 .outage-banner.show{display:block}
+
+/* ---------- Skeleton loaders ---------- */
+/* Shaped like the content that's about to land (a bus card, a fleet
+   row, a forecast bar) so the wait reads as "this is loading" rather
+   than a generic spinner, and the layout doesn't jump once real
+   content replaces it. */
+.skeleton-block{
+  border-radius:6px;
+  background:linear-gradient(100deg,var(--line) 30%,#2a4356 50%,var(--line) 70%);
+  background-size:250% 100%;
+  animation:skeletonShimmer 1.4s ease-in-out infinite;
+}
+@keyframes skeletonShimmer{0%{background-position:200% 0}100%{background-position:-50% 0}}
+
+.skeleton-bus{border:1px solid var(--line);border-radius:var(--r-md);padding:15px;margin-bottom:10px}
+.skeleton-bus .sk-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+.skeleton-bus .sk-number{width:38px;height:22px}
+.skeleton-bus .sk-name{width:90px;height:14px;margin-left:9px}
+.skeleton-bus .sk-eta{width:54px;height:20px}
+.skeleton-bus .sk-bar{height:6px;width:100%;border-radius:4px}
+
+.skeleton-fleet{display:flex;align-items:center;gap:10px;padding:12px 2px;border-bottom:1px solid var(--line)}
+.skeleton-fleet .sk-dot{width:32px;height:32px;border-radius:50%;flex:0 0 auto}
+.skeleton-fleet .sk-lines{flex:1 1 auto}
+.skeleton-fleet .sk-line{height:11px;border-radius:4px;margin-bottom:6px}
+.skeleton-fleet .sk-line:last-child{width:60%;margin-bottom:0}
+
+.skeleton-bars{display:flex;align-items:flex-end;gap:4px;height:90px;padding:0 2px}
+.skeleton-bars .sk-col{flex:1 1 auto;border-radius:3px 3px 0 0}
+
+@media(prefers-reduced-motion:reduce){
+  .skeleton-block{animation:none;background:var(--line)}
+}

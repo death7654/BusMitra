@@ -45,9 +45,23 @@
             <h1>Know your bus before you board.</h1>
           </div>
 
+          <!-- One-time tip for first-time openers. Dismissed permanently
+               via localStorage (see dismissOnboardingTip in main.js) - it
+               never comes back once closed. -->
+          <div class="onboarding-tip" id="onboarding-tip">
+            <i class="bi bi-info-circle"></i>
+            <span>Tap any bus below to see more, or try Demo mode in Manage to see the app running with simulated buses.</span>
+            <button id="onboarding-dismiss" aria-label="Dismiss tip"><i class="bi bi-x"></i></button>
+          </div>
+
           <div class="search">
-            <div class="field"><small>Starting location</small><select id="from"></select></div>
-            <div class="field"><small>Destination</small><select id="to"></select></div>
+            <div class="search-fields">
+              <div class="field"><small>Starting location</small><select id="from"></select></div>
+              <div class="field"><small>Destination</small><select id="to"></select></div>
+              <button class="swap-btn" id="swap-btn" type="button" aria-label="Swap starting location and destination">
+                <i class="bi bi-arrow-down-up"></i>
+              </button>
+            </div>
             <button class="btn" id="predict">Predict buses &rarr;</button>
           </div>
           <div class="notice" id="notice"></div>
