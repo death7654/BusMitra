@@ -3,8 +3,9 @@ from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..models import Bus, UserPing
-from ..schemas import BusStatusResponse
+from ..schemas import BusStatusResponse, OutageStatus
 from ..services.crowd_aggregation import aggregate_bus_crowd
+from ..services.outage import get_outage_status
 
 
 router = APIRouter(prefix="/api", tags=["Bus"])
@@ -74,4 +75,6 @@ def get_bus_status(
         report_weight=crowd_data["report_weight"],
         crowd_source=crowd_data["crowd_source"],
         trend=crowd_data["trend"],
+
+        outage=OutageStatus(**get_outage_status(db=db, bus_id=bus_id)),
     )

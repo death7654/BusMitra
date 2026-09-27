@@ -2,5 +2,7 @@
     <!-- Base application theme. -->
     <style name="Theme.bus_mitra" parent="Theme.MaterialComponents.DayNight.NoActionBar">
         <!-- Customize your theme here. -->
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:windowContentOverlay">@null</item>
     </style>
 </resources>
