@@ -30,6 +30,13 @@
           <button class="track-btn" id="track-btn">Enable live tracking</button>
         </div>
 
+        <div class="emergency-panel">
+          <h4>Emergency &amp; reports</h4>
+          <button class="sos-btn" id="sos-btn">🆘 SOS</button>
+          <button class="health-btn" id="health-btn">⚕️ Health emergency</button>
+          <button class="report-btn" id="breakdown-btn">🚫 Report bus issue</button>
+        </div>
+
         <div class="online" id="online-panel">
           <span class="dot" id="online-dot"></span><span id="online-text">Checking backend&hellip;</span>
         </div>
@@ -102,5 +109,97 @@
         </div>
       </main>
     </div>
+
+        <!-- SOS / Harassment modal -->
+<div class="modal-overlay" id="sos-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>🆘 Report an emergency</h3>
+      <button class="modal-close" data-close="sos-modal">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p class="modal-note">Your live location (and selected bus, if any) is attached automatically. Choose what's happening:</p>
+      <div class="sos-options" id="sos-options">
+        <button class="sos-option" data-type="harassment">🚨 Harassment / unsafe behavior</button>
+        <button class="sos-option" data-type="theft">🎒 Theft / pickpocketing</button>
+        <button class="sos-option" data-type="accident">💥 Accident on board</button>
+        <button class="sos-option" data-type="other">❗ Other emergency</button>
+      </div>
+      <textarea id="sos-details" rows="3" placeholder="Optional details — seat/location on bus, description, anything responders should know"></textarea>
+      <div class="sos-actions">
+        <button class="btn sos-submit" id="sos-submit" disabled>Send SOS report</button>
+        <a class="btn-outline" href="tel:112">📞 Call 112</a>
+        <a class="btn-outline" href="tel:1091">📞 Women's helpline (1091)</a>
+      </div>
+      <div class="sos-status" id="sos-status" aria-live="polite"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Health emergency modal -->
+<div class="modal-overlay" id="health-modal">
+  <div class="modal modal-wide">
+    <div class="modal-header">
+      <h3>⚕️ Health emergency</h3>
+      <button class="modal-close" data-close="health-modal">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="health-actions">
+        <a class="btn danger" href="tel:108">📞 Call ambulance (108)</a>
+        <button class="btn" id="health-alert-btn">📍 Alert driver + share my location</button>
+      </div>
+
+      <div class="first-aid-block">
+        <h4>CPR — if someone is unresponsive and not breathing normally</h4>
+        <ol>
+          <li><b>Check response:</b> tap shoulders, shout. If no response, call 108 immediately (or ask someone else to).</li>
+          <li><b>Position:</b> lay them flat on their back on a firm surface.</li>
+          <li><b>Hand placement:</b> heel of one hand on the center of the chest, other hand on top, fingers interlocked.</li>
+          <li><b>Compressions:</b> push hard and fast, about 5–6 cm deep, at 100–120 compressions/min (roughly the beat of "Stayin' Alive"). Let the chest fully recoil between pushes.</li>
+          <li><b>Continue</b> until medical help arrives or the person starts breathing/moving. If trained and an AED is available, use it as soon as possible.</li>
+          <li>If you're not trained in rescue breaths, hands-only CPR (compressions only, no breaks) is still effective and recommended.</li>
+        </ol>
+        <h4>Choking</h4>
+        <ol>
+          <li>If they can cough or speak, encourage coughing — don't intervene yet.</li>
+          <li>If they can't breathe/cough/speak: give 5 back blows between the shoulder blades, then 5 abdominal thrusts (Heimlich maneuver), alternating until the object clears or help arrives.</li>
+        </ol>
+        <h4>Fainting / dizziness</h4>
+        <ol>
+          <li>Help them lie down and raise their legs slightly, or sit with head between knees.</li>
+          <li>Loosen tight clothing, ensure airflow, don't crowd them.</li>
+          <li>If they don't recover within a minute or two, or have chest pain/confusion, call 108.</li>
+        </ol>
+        <p class="modal-note">This is general guidance, not a substitute for certified first-aid training.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Bus breakdown / unavailable modal -->
+<div class="modal-overlay" id="breakdown-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>🚫 Report a bus issue</h3>
+      <button class="modal-close" data-close="breakdown-modal">&times;</button>
+    </div>
+    <div class="modal-body">
+      <label class="modal-label" for="breakdown-bus">Which bus?</label>
+      <select id="breakdown-bus"></select>
+
+      <label class="modal-label">What's the issue?</label>
+      <div class="radio-group">
+        <label><input type="radio" name="breakdown-type" value="breakdown" checked> Broken down / stopped</label>
+        <label><input type="radio" name="breakdown-type" value="no-show"> Never arrived / no-show</label>
+        <label><input type="radio" name="breakdown-type" value="overcrowded"> Dangerously overcrowded</label>
+        <label><input type="radio" name="breakdown-type" value="other"> Other</label>
+      </div>
+
+      <textarea id="breakdown-notes" rows="2" placeholder="Optional notes"></textarea>
+      <button class="btn" id="breakdown-submit">Submit report</button>
+      <div class="sos-status" id="breakdown-status" aria-live="polite"></div>
+    </div>
+  </div>
+</div>
   </body>
 </html>

@@ -29,6 +29,7 @@ let candidates = [];    // computed per Predict click
 let selectedBusId = null;
 let trackingStarted = false;
 let lastNotifiedStatus = new Map(); // bus_id -> last status we already notified about
+let lastKnownPosition = { latitude: null, longitude: null }; // filled by location-update events, used for SOS/health reports
 
 // DOM refs (filled in on DOMContentLoaded)
 let fromEl, toEl, predictBtn, noticeEl, countEl, busListEl;
@@ -38,6 +39,14 @@ let forecastTagEl, chartEl, patternEl, betterEl;
 let myCoordsEl, mySpeedEl, myMatchWrapEl, trackBtnEl;
 let onlineDotEl, onlineTextEl;
 let liveMapEl, mapTagEl;
+
+// Emergency / reporting DOM refs
+let sosBtnEl, healthBtnEl, breakdownBtnEl;
+let sosModalEl, healthModalEl, breakdownModalEl;
+let sosOptionEls, sosDetailsEl, sosSubmitBtnEl, sosStatusEl;
+let healthAlertBtnEl;
+let breakdownBusEl, breakdownSubmitBtnEl, breakdownNotesEl, breakdownStatusEl;
+let selectedSosType = null;
 
 // ---------------------------------------------------------------------
 // Live map (Leaflet, dark tiles to match the app theme)
@@ -650,6 +659,7 @@ async function startTracking() {
 function setupTracking() {
   listen("location-update", (event) => {
     const { latitude, longitude, speed_kmh } = event.payload;
+    lastKnownPosition = { latitude, longitude };
     myCoordsEl.textContent = `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`;
     mySpeedEl.textContent = speed_kmh == null ? "\u2014" : `${speed_kmh.toFixed(1)} km/h`;
     updateUserMarker(latitude, longitude);
@@ -662,6 +672,150 @@ function setupTracking() {
   });
 
   trackBtnEl.addEventListener("click", startTracking);
+}
+
+// ---------------------------------------------------------------------
+// Emergency & reporting: SOS/harassment, health emergency, bus issue
+//
+// These call new Tauri commands (submit_sos_report, submit_health_alert,
+// report_bus_issue) that mirror the existing checkin_to_bus /
+// submit_crowd_report commands. They need matching #[tauri::command]
+// handlers added on the Rust side (see note below the file).
+// ---------------------------------------------------------------------
+function openModal(modalEl) {
+  if (modalEl) modalEl.classList.add("open");
+}
+function closeModal(modalEl) {
+  if (modalEl) modalEl.classList.remove("open");
+}
+
+function setupEmergencyFeatures() {
+  sosBtnEl = document.getElementById("sos-btn");
+  healthBtnEl = document.getElementById("health-btn");
+  breakdownBtnEl = document.getElementById("breakdown-btn");
+
+  sosModalEl = document.getElementById("sos-modal");
+  healthModalEl = document.getElementById("health-modal");
+  breakdownModalEl = document.getElementById("breakdown-modal");
+
+  sosOptionEls = document.querySelectorAll(".sos-option");
+  sosDetailsEl = document.getElementById("sos-details");
+  sosSubmitBtnEl = document.getElementById("sos-submit");
+  sosStatusEl = document.getElementById("sos-status");
+
+  healthAlertBtnEl = document.getElementById("health-alert-btn");
+
+  breakdownBusEl = document.getElementById("breakdown-bus");
+  breakdownNotesEl = document.getElementById("breakdown-notes");
+  breakdownSubmitBtnEl = document.getElementById("breakdown-submit");
+  breakdownStatusEl = document.getElementById("breakdown-status");
+
+  // Open buttons
+  if (sosBtnEl) sosBtnEl.addEventListener("click", () => openModal(sosModalEl));
+  if (healthBtnEl) healthBtnEl.addEventListener("click", () => openModal(healthModalEl));
+  if (breakdownBtnEl) {
+    breakdownBtnEl.addEventListener("click", () => {
+      populateBreakdownBusSelect();
+      openModal(breakdownModalEl);
+    });
+  }
+
+  // Close buttons + click-outside-to-close
+  document.querySelectorAll(".modal-close").forEach((btn) => {
+    btn.addEventListener("click", () => closeModal(document.getElementById(btn.dataset.close)));
+  });
+  document.querySelectorAll(".modal-overlay").forEach((overlay) => {
+    overlay.addEventListener("click", (e) => {
+      if (e.target === overlay) overlay.classList.remove("open");
+    });
+  });
+
+  // SOS type selection
+  sosOptionEls.forEach((opt) => {
+    opt.addEventListener("click", () => {
+      sosOptionEls.forEach((o) => o.classList.remove("selected"));
+      opt.classList.add("selected");
+      selectedSosType = opt.dataset.type;
+      sosSubmitBtnEl.disabled = false;
+    });
+  });
+
+  if (sosSubmitBtnEl) sosSubmitBtnEl.addEventListener("click", submitSosReport);
+  if (healthAlertBtnEl) healthAlertBtnEl.addEventListener("click", submitHealthAlert);
+  if (breakdownSubmitBtnEl) breakdownSubmitBtnEl.addEventListener("click", submitBreakdownReport);
+}
+
+function populateBreakdownBusSelect() {
+  if (!breakdownBusEl) return;
+  const allBuses = [];
+  for (const route of routes) {
+    for (const bus of route.buses) {
+      allBuses.push({ id: bus.id, label: `${route.route_number} \u2014 ${bus.bus_number}` });
+    }
+  }
+  breakdownBusEl.innerHTML = allBuses
+    .map((b) => `<option value="${b.id}">${b.label}</option>`)
+    .join("");
+  if (selectedBusId != null) breakdownBusEl.value = String(selectedBusId);
+}
+
+async function submitSosReport() {
+  sosStatusEl.textContent = "Sending\u2026";
+  sosStatusEl.className = "sos-status";
+  try {
+    const res = await invoke("submit_sos_report", {
+      sosType: selectedSosType,
+      details: sosDetailsEl.value,
+      busId: selectedBusId,
+      latitude: lastKnownPosition.latitude,
+      longitude: lastKnownPosition.longitude,
+    });
+    sosStatusEl.textContent = res?.message || "Report sent. Stay safe \u2014 help has been notified.";
+    sosStatusEl.className = "sos-status ok";
+  } catch (err) {
+    sosStatusEl.textContent = `Couldn't send automatically (${err}) \u2014 please use the call buttons above.`;
+    sosStatusEl.className = "sos-status err";
+  }
+}
+
+async function submitHealthAlert() {
+  const originalText = healthAlertBtnEl.textContent;
+  healthAlertBtnEl.disabled = true;
+  healthAlertBtnEl.textContent = "Alerting\u2026";
+  try {
+    const res = await invoke("submit_health_alert", {
+      busId: selectedBusId,
+      latitude: lastKnownPosition.latitude,
+      longitude: lastKnownPosition.longitude,
+    });
+    healthAlertBtnEl.textContent = res?.message || "Driver alerted";
+  } catch (err) {
+    healthAlertBtnEl.textContent = "Alert failed \u2014 call 108 directly";
+  } finally {
+    setTimeout(() => {
+      healthAlertBtnEl.disabled = false;
+      healthAlertBtnEl.textContent = originalText;
+    }, 3000);
+  }
+}
+
+async function submitBreakdownReport() {
+  breakdownStatusEl.textContent = "Submitting\u2026";
+  breakdownStatusEl.className = "sos-status";
+  const busId = Number(breakdownBusEl.value);
+  const issueType = document.querySelector('input[name="breakdown-type"]:checked')?.value || "other";
+  try {
+    const res = await invoke("report_bus_issue", {
+      busId,
+      issueType,
+      notes: breakdownNotesEl.value,
+    });
+    breakdownStatusEl.textContent = res?.message || "Thanks \u2014 this has been flagged.";
+    breakdownStatusEl.className = "sos-status ok";
+  } catch (err) {
+    breakdownStatusEl.textContent = `Failed to submit (${err}) \u2014 try again.`;
+    breakdownStatusEl.className = "sos-status err";
+  }
 }
 
 // ---------------------------------------------------------------------
@@ -709,6 +863,7 @@ window.addEventListener("DOMContentLoaded", () => {
 
   initMap();
   setupTracking();
+  setupEmergencyFeatures();
   loadRoutes();
   resetSelectedPanels();
   // Start location tracking automatically on app startup instead of
