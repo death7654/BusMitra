@@ -11,6 +11,9 @@ from app.services import sos as sos_service
 
 client = TestClient(app)
 
+# Captured at import, before the autouse fixture swaps send_sms for a stub.
+REAL_SEND_SMS = sos_service.send_sms
+
 # Fresh number per run: the tests share the real SQLite file, and the
 # per-number rate limit would otherwise trip on leftovers from earlier runs.
 UID = random.randint(10_000_000, 90_000_000)
@@ -120,3 +123,74 @@ def test_bad_photo_rejected_but_alert_accepted(env):
 
 def test_out_of_range_location_does_not_422(env):
     assert _post(UID + 9, latitude=999, contact_phone="+14155550199").status_code == 200
+
+
+# ---------------------------------------------------------------------
+# Twilio behaviour (real send_sms, HTTP mocked)
+# ---------------------------------------------------------------------
+
+class _FakeResp:
+    def __init__(self, status_code, payload):
+        self.status_code, self._payload = status_code, payload
+
+    def json(self):
+        return self._payload
+
+
+# Shape of the response Twilio returned for the trial "Try out SMS" call.
+QUEUED = {
+    "sid": "SMb7d984d0e915edec2175ea7cbf2e3ab5",
+    "status": "queued",
+    "error_code": None,
+    "error_message": None,
+}
+
+
+class _Real:
+    send_sms = staticmethod(REAL_SEND_SMS)
+
+
+def _real_send(monkeypatch, response, captured=None):
+    """Use the genuine send_sms, faking only the HTTP call."""
+
+    def fake_post(url, auth=None, data=None, timeout=None):
+        if captured is not None:
+            captured.update(url=url, data=data)
+        return response
+
+    monkeypatch.setattr(sos_service.httpx, "post", fake_post)
+    return _Real
+
+
+def test_send_sms_queued_counts_as_success(monkeypatch):
+    real = _real_send(monkeypatch, _FakeResp(201, QUEUED))
+    assert real.send_sms("+918618435857", "hi") is True
+
+
+def test_send_sms_failed_status_in_2xx_is_failure(monkeypatch):
+    bad = dict(QUEUED, status="failed", error_code=21608)
+    real = _real_send(monkeypatch, _FakeResp(201, bad))
+    assert real.send_sms("+918618435857", "hi") is False
+
+
+def test_send_sms_http_error_is_failure(monkeypatch):
+    real = _real_send(monkeypatch, _FakeResp(400, {"code": 21608, "message": "x"}))
+    assert real.send_sms("+918618435857", "hi") is False
+
+
+def test_trial_mode_sends_twilio_template_and_is_honest(monkeypatch, env):
+    monkeypatch.setenv("TWILIO_TRIAL_MODE", "true")
+    r = _post(UID + 20, phone="+1415" + str(random.randint(6000000, 6999999)))
+    body = r.json()
+    assert body["sms_status"] == "sent_trial"
+    assert "does not include your location" in body["message"]
+    _, text = env[0]
+    assert text == sos_service.TRIAL_TEMPLATE_BODY
+    assert "maps.google.com" not in text
+
+
+def test_trial_body_override(monkeypatch, env):
+    monkeypatch.setenv("TWILIO_TRIAL_MODE", "1")
+    monkeypatch.setenv("TWILIO_TRIAL_BODY", "Custom approved template")
+    _post(UID + 21, phone="+1415" + str(random.randint(7000000, 7999999)))
+    assert env[0][1] == "Custom approved template"

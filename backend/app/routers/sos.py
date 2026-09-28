@@ -142,14 +142,20 @@ def create_sos_report(
                 if base and (photos_saved or details)
                 else None
             )
-            body = _sms_body(
-                bus.bus_number if bus else None,
-                req.latitude,
-                req.longitude,
-                link,
-            )
+            trial = sos_service.trial_mode()
+            if trial:
+                # Trial accounts only deliver Twilio's template text, so
+                # the location/link cannot be included.
+                body = sos_service.trial_body()
+            else:
+                body = _sms_body(
+                    bus.bus_number if bus else None,
+                    req.latitude,
+                    req.longitude,
+                    link,
+                )
             if sos_service.send_sms(phone, body):
-                report.sms_status = "sent"
+                report.sms_status = "sent_trial" if trial else "sent"
                 report.sms_sent_at = datetime.utcnow()
             else:
                 report.sms_status = "failed"
@@ -170,6 +176,7 @@ def _message(sms_status: str, offered: int, saved: int) -> str:
         saved_note += " Your photos could not be stored securely."
     texts = {
         "sent": "Your alert was recorded and your contact has been texted.",
+        "sent_trial": saved_note + " A test text was sent to your contact, but it does not include your location or details, so please call them.",
         "not_requested": saved_note + " No trusted contact is saved, so no text was sent.",
         "invalid_number": saved_note + " Your contact's number doesn't look valid, so no text was sent.",
         "not_configured": saved_note + " Texting isn't set up on the server, so please call your contact.",
@@ -177,7 +184,7 @@ def _message(sms_status: str, offered: int, saved: int) -> str:
         "failed": saved_note + " The text to your contact could not be sent, so please call them.",
     }
     text = texts.get(sms_status, saved_note)
-    if sms_status == "sent" and offered and not saved:
+    if sms_status in ("sent", "sent_trial") and offered and not saved:
         text += " Your photos could not be stored securely."
     return text
 

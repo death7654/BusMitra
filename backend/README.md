@@ -696,3 +696,40 @@ JSON Response to Frontend
 
 ```
 ```
+
+---
+
+# 17. SOS Texting (Twilio)
+
+The SOS endpoint (`POST /api/sos`) texts the user's trusted contact through
+Twilio. It is configured only through environment variables:
+
+```text
+TWILIO_ACCOUNT_SID     Twilio account SID
+TWILIO_AUTH_TOKEN      Twilio auth token
+TWILIO_FROM_NUMBER     Your Twilio number, e.g. +17372508034
+TWILIO_TRIAL_MODE      1/true while on a Twilio TRIAL account (see below)
+TWILIO_TRIAL_BODY      Optional: override the trial template text
+```
+
+`status: "queued"` in Twilio's response is a success. Delivery is reported
+by Twilio afterwards. The backend treats an HTTP error, `status: failed`
+or a non-null `error_code` as a failed send.
+
+### Trial accounts
+
+Twilio trial accounts (the Console "Try out SMS" flow) only deliver
+Twilio's predefined template text, and only to **verified** numbers:
+
+1. Verify the contact's number in Console > Phone Numbers > Verified Caller IDs.
+2. Enable SMS geo-permissions for the destination country (India: +91).
+3. Set `TWILIO_TRIAL_MODE=true`.
+
+In trial mode the contact receives the template ("Alert: Your account
+balance is below $100...") instead of the real SOS text, so the location
+and photo link are NOT sent. The API reports this honestly with
+`sms_status: "sent_trial"`. Upgrade the Twilio account and unset
+`TWILIO_TRIAL_MODE` for real SOS messages.
+
+India note: real (non-template) messages to +91 numbers on a paid account
+also require DLT registration of the sender ID and message template.

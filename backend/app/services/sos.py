@@ -17,6 +17,13 @@ repo or the app binary:
   BUSMITRA_SOS_DATA_DIR     Where encrypted photos live. Point this at a
                             persistent disk on Render, or they are lost
                             on every deploy/restart.
+  TWILIO_TRIAL_MODE         Set to 1/true while on a Twilio TRIAL account.
+                            Trial accounts only deliver Twilio's predefined
+                            template text, so the real SOS text is replaced
+                            by that template (see TRIAL_TEMPLATE_BODY). The
+                            contact must also be a *verified* number in the
+                            Twilio Console. Leave unset on a paid account.
+  TWILIO_TRIAL_BODY         Optional override for the template text above.
   BUSMITRA_SOS_RETENTION_HOURS   Photos/details deleted after this long
                             (default 168 = 7 days).
   BUSMITRA_SOS_LINK_HOURS   How long the texted link works (default 24).
@@ -25,6 +32,7 @@ repo or the app binary:
 
 import base64
 import hashlib
+import json
 import logging
 import os
 import re
@@ -237,7 +245,8 @@ def sms_rate_limited(db: Session, user_id: int, phone_hash: str) -> bool:
     now = datetime.utcnow()
     hour_ago = now - timedelta(hours=1)
     sent = db.query(SosReport).filter(
-        SosReport.sms_status == "sent", SosReport.sms_sent_at >= hour_ago
+        SosReport.sms_status.in_(("sent", "sent_trial")),
+        SosReport.sms_sent_at >= hour_ago
     )
     if sent.filter(SosReport.contact_phone_hash == phone_hash).count() >= (
         SMS_PER_NUMBER_PER_HOUR
@@ -261,33 +270,101 @@ def public_base_url() -> str:
     )
     return url.rstrip("/")
 
+def _extra_twilio_params() -> dict[str, str]:
+    """Extra form fields sent with every SMS, from TWILIO_EXTRA_PARAMS.
+
+    Trial accounts only accept Twilio's predefined templates. Copy the
+    exact request from the Console's "Try out SMS" page and put any
+    template-related fields it shows here as a JSON object. Leave unset
+    on a paid account.
+    """
+    raw = os.environ.get("TWILIO_EXTRA_PARAMS", "").strip()
+    if not raw:
+        return {}
+    try:
+        extra = json.loads(raw)
+    except ValueError:
+        log.error("TWILIO_EXTRA_PARAMS is not valid JSON; ignoring it")
+        return {}
+    if not isinstance(extra, dict):
+        log.error("TWILIO_EXTRA_PARAMS must be a JSON object; ignoring it")
+        return {}
+    return {str(k): str(v) for k, v in extra.items()}
+
+
+# The exact body Twilio's Console "Try out SMS" sends on trial accounts.
+TRIAL_TEMPLATE_BODY = (
+    "Alert: Your account balance is below $100. Please deposit funds to "
+    "avoid overdraft fees. Test message from Twilio."
+)
+
+# Twilio message states that mean the text will never arrive. "queued",
+# "accepted", "sending", "sent" and "delivered" are all fine.
+_FAILED_STATES = {"failed", "undelivered", "canceled"}
+
+
+def trial_mode() -> bool:
+    return os.environ.get("TWILIO_TRIAL_MODE", "").strip().lower() in (
+        "1", "true", "yes", "on",
+    )
+
+
+def trial_body() -> str:
+    return os.environ.get("TWILIO_TRIAL_BODY", "").strip() or TRIAL_TEMPLATE_BODY
+
 
 def send_sms(to_number: str, body: str) -> bool:
-    """Send one text through Twilio's REST API. Never raises."""
+    """Send one text through Twilio's REST API. Never raises.
+
+    Returns True only if Twilio accepted the message: HTTP 2xx, a
+    non-failed status and no error code. "queued" is the normal success
+    state; delivery itself is reported later, asynchronously.
+    """
     sid = os.environ["TWILIO_ACCOUNT_SID"].strip()
     token = os.environ["TWILIO_AUTH_TOKEN"].strip()
     sender = os.environ["TWILIO_FROM_NUMBER"].strip()
+
+    data = {"To": to_number, "From": sender, "Body": body}
+    data.update(_extra_twilio_params())  # e.g. trial-account template fields
+
     try:
         res = httpx.post(
             f"https://api.twilio.com/2010-04-01/Accounts/{sid}/Messages.json",
             auth=(sid, token),
-            data={"To": to_number, "From": sender, "Body": body},
+            data=data,
             timeout=10.0,
         )
     except httpx.HTTPError as exc:
         log.error("Twilio request failed: %s", type(exc).__name__)
         return False
+
+    try:
+        payload = res.json()
+    except ValueError:
+        payload = {}
+    if not isinstance(payload, dict):
+        payload = {}
+
     if res.status_code >= 400:
-        try:
-            body = res.json()
-        except ValueError:
-            body = {}
-        # Twilio's message can quote the destination number, so mask digits
-        # before logging to keep the "never log the number" rule.
-        reason = re.sub(r"\+?\d{6,}", "[number]", str(body.get("message", "")))
+        # Twilio's message can quote the destination number, so mask long
+        # digit runs to keep the "never log the number" rule.
+        reason = re.sub(r"\+?\d{6,}", "[number]", str(payload.get("message", "")))
         log.error(
             "Twilio rejected SMS: HTTP %s code %s - %s (%s)",
-            res.status_code, body.get("code"), reason, body.get("more_info"),
+            res.status_code, payload.get("code"), reason, payload.get("more_info"),
         )
         return False
+
+    # A 2xx can still carry a failure (older Twilio responses report
+    # error_code / status="failed" in the body instead of an HTTP error).
+    status = str(payload.get("status") or "").lower()
+    error_code = payload.get("error_code")
+    if status in _FAILED_STATES or error_code not in (None, "", 0):
+        log.error(
+            "Twilio accepted the request but the message is %s (error_code=%s, sid=%s)",
+            status or "unknown", error_code, payload.get("sid"),
+        )
+        return False
+
+    log.info("Twilio SMS %s (sid=%s)", status or "accepted", payload.get("sid"))
     return True
