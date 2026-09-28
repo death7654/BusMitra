@@ -194,6 +194,40 @@ def test_trial_template_override_and_invalid_fallback(monkeypatch, env):
     monkeypatch.setenv("TWILIO_TRIAL_TEMPLATE", "sms_internal_alerts")
     _post(UID + 21, phone="+1415" + str(random.randint(7000000, 7999999)))
     assert env[0][1] == "sms_internal_alerts"
-    monkeypatch.setenv("TWILIO_TRIAL_TEMPLATE", "Alert: custom text")
+    monkeypatch.setenv("TWILIO_TRIAL_TEMPLATE", "Alert: custom text")  # not a name
     _post(UID + 22, phone="+1415" + str(random.randint(8000000, 8999999)))
     assert env[1][1] == "sms_account_alerts"
+
+
+class _Seq:
+    """Fake httpx.post that returns queued responses and records bodies."""
+
+    def __init__(self, *responses):
+        self.responses, self.bodies = list(responses), []
+
+    def __call__(self, url, auth=None, data=None, timeout=None):
+        self.bodies.append(data["Body"])
+        return self.responses.pop(0)
+
+
+REJECT_572006 = _FakeResp(400, {"code": 572006, "message": "Invalid template name."})
+
+
+def test_custom_text_on_trial_account_falls_back_to_template(monkeypatch):
+    seq = _Seq(REJECT_572006, _FakeResp(201, QUEUED))
+    monkeypatch.setattr(sos_service.httpx, "post", seq)
+    assert REAL_SEND_SMS("+14155550101", "real SOS text") == "trial"
+    assert seq.bodies == ["real SOS text", "sms_account_alerts"]
+
+
+def test_fallback_also_rejected_is_failure(monkeypatch):
+    seq = _Seq(REJECT_572006, REJECT_572006)
+    monkeypatch.setattr(sos_service.httpx, "post", seq)
+    assert REAL_SEND_SMS("+14155550101", "real SOS text") is False
+
+
+def test_router_reports_trial_when_send_falls_back(monkeypatch, env):
+    monkeypatch.setattr(sos_service, "send_sms", lambda to, body: "trial")
+    r = _post(UID + 30, phone="+1415" + str(random.randint(2000000, 2999999)))
+    assert r.json()["sms_status"] == "sent_trial"
+    assert "does not include your location" in r.json()["message"]

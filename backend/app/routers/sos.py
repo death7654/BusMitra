@@ -154,8 +154,12 @@ def create_sos_report(
                     req.longitude,
                     link,
                 )
-            if sos_service.send_sms(phone, body):
-                report.sms_status = "sent_trial" if trial else "sent"
+            result = sos_service.send_sms(phone, body)
+            if result:
+                # "trial" = send_sms had to fall back to a Twilio template
+                report.sms_status = (
+                    "sent_trial" if (trial or result == "trial") else "sent"
+                )
                 report.sms_sent_at = datetime.utcnow()
             else:
                 report.sms_status = "failed"

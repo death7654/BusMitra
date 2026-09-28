@@ -322,30 +322,38 @@ def trial_mode() -> bool:
 
 
 def trial_body() -> str:
-    """The template NAME to send as Body while on a trial account."""
+    """The template NAME to send as Body while on a trial account.
+
+    Any simple identifier is accepted so the exact value shown in the
+    Console's "Try out SMS" code block can be pasted into
+    TWILIO_TRIAL_TEMPLATE if Twilio ever renames its templates.
+    """
     name = os.environ.get("TWILIO_TRIAL_TEMPLATE", "").strip() or DEFAULT_TRIAL_TEMPLATE
-    if name not in TRIAL_TEMPLATES:
+    if not re.fullmatch(r"[A-Za-z0-9_\-]{1,64}", name):
         log.error(
-            "TWILIO_TRIAL_TEMPLATE=%r is not a Twilio trial template; using %s",
-            name, DEFAULT_TRIAL_TEMPLATE,
+            "TWILIO_TRIAL_TEMPLATE=%r is not a template name (custom text is "
+            "not allowed on trial accounts); using %s", name, DEFAULT_TRIAL_TEMPLATE,
         )
         return DEFAULT_TRIAL_TEMPLATE
+    if name not in TRIAL_TEMPLATES:
+        log.warning("TWILIO_TRIAL_TEMPLATE=%r is not in the documented list", name)
     return name
 
 
-def send_sms(to_number: str, body: str) -> bool:
-    """Send one text through Twilio's REST API. Never raises.
+_TRIAL_ERROR_CODE = 572006  # "Invalid template name" - trial account, custom Body
 
-    Returns True only if Twilio accepted the message: HTTP 2xx, a
-    non-failed status and no error code. "queued" is the normal success
-    state; delivery itself is reported later, asynchronously.
-    """
+
+def _post_message(to_number: str, body: str) -> tuple[bool, int | None]:
+    """One request to Twilio. Returns (accepted, twilio_error_code)."""
     sid = os.environ["TWILIO_ACCOUNT_SID"].strip()
     token = os.environ["TWILIO_AUTH_TOKEN"].strip()
     sender = os.environ["TWILIO_FROM_NUMBER"].strip()
 
     data = {"To": to_number, "From": sender, "Body": body}
-    data.update(_extra_twilio_params())  # e.g. trial-account template fields
+    if body not in TRIAL_TEMPLATES and body != trial_body():
+        # Trial requests may only carry To/From/Body(/StatusCallback), so
+        # never attach extra fields to a template send.
+        data.update(_extra_twilio_params())
 
     try:
         res = httpx.post(
@@ -356,7 +364,7 @@ def send_sms(to_number: str, body: str) -> bool:
         )
     except httpx.HTTPError as exc:
         log.error("Twilio request failed: %s", type(exc).__name__)
-        return False
+        return False, None
 
     try:
         payload = res.json()
@@ -373,7 +381,11 @@ def send_sms(to_number: str, body: str) -> bool:
             "Twilio rejected SMS: HTTP %s code %s - %s (%s)",
             res.status_code, payload.get("code"), reason, payload.get("more_info"),
         )
-        return False
+        try:
+            code = int(payload.get("code"))
+        except (TypeError, ValueError):
+            code = None
+        return False, code
 
     # A 2xx can still carry a failure (older Twilio responses report
     # error_code / status="failed" in the body instead of an HTTP error).
@@ -384,7 +396,49 @@ def send_sms(to_number: str, body: str) -> bool:
             "Twilio accepted the request but the message is %s (error_code=%s, sid=%s)",
             status or "unknown", error_code, payload.get("sid"),
         )
-        return False
+        return False, None
 
     log.info("Twilio SMS %s (sid=%s)", status or "accepted", payload.get("sid"))
-    return True
+    return True, None
+
+
+def send_sms(to_number: str, body: str) -> bool | str:
+    """Send one text through Twilio's REST API. Never raises.
+
+    Returns False if the message was not accepted, True if it was sent
+    as given, or the string "trial" if it had to be sent as a trial
+    template instead (truthy, so `if send_sms(...)` still works).
+
+    "queued" is the normal success state; delivery is reported later.
+    On a trial account Twilio rejects any Body that is not a template
+    name with error 572006. When that happens with a normal message,
+    retry once with the template name so the alert still goes out, and
+    let the caller know the contact did not get the real text.
+    """
+    is_template = body in TRIAL_TEMPLATES or body == trial_body()
+    log.info(
+        "Sending SMS via Twilio (trial_mode=%s, body=%s)",
+        trial_mode(), body if is_template else f"<custom text, {len(body)} chars>",
+    )
+
+    ok, code = _post_message(to_number, body)
+    if ok:
+        return "trial" if is_template else True
+
+    if code == _TRIAL_ERROR_CODE and not is_template:
+        template = trial_body()
+        log.warning(
+            "Twilio says this is a trial account (572006): custom text is not "
+            "allowed. Retrying with template %r. Set TWILIO_TRIAL_MODE=true to "
+            "skip the failed first attempt, or upgrade the account.", template,
+        )
+        ok, _ = _post_message(to_number, template)
+        return "trial" if ok else False
+
+    if code == _TRIAL_ERROR_CODE:
+        log.error(
+            "Twilio rejected template name %r. Copy the exact Body value from "
+            "Console > Messaging > Try out SMS into TWILIO_TRIAL_TEMPLATE.",
+            body,
+        )
+    return False
