@@ -25,19 +25,6 @@
         </button>
       </header>
 
-<<<<<<< HEAD
-        <div class="emergency-panel">
-          <h4>Emergency &amp; reports</h4>
-          <button class="sos-btn" id="sos-btn">🆘 SOS</button>
-          <button class="health-btn" id="health-btn">⚕️ Health emergency</button>
-          <button class="report-btn" id="breakdown-btn">🚫 Report bus issue</button>
-        </div>
-
-        <div class="online" id="online-panel">
-          <span class="dot" id="online-dot"></span><span id="online-text">Checking backend&hellip;</span>
-        </div>
-      </aside>
-=======
       <!-- Sits above every page, not inside one. Demo mode and a weather
            advisory both compete for this one slot: showing both at once
            reads as banner spam, so only one is visible at a time (see
@@ -48,7 +35,6 @@
         <span id="demo-banner-text">Demo mode &mdash; all crowd data on screen is simulated</span>
       </div>
       <div class="weather-advisory" id="weather-advisory"><i class="bi bi-exclamation-triangle"></i><span id="weather-advisory-text"></span></div>
->>>>>>> a416797b8bc3e59b1ffb61989920bdb06d2d939a
 
       <main class="pages">
 
@@ -194,6 +180,98 @@
           </div>
         </section>
 
+        <!-- ============ SOS (dedicated safety & emergency page) ============ -->
+        <section class="page" data-page="sos">
+          <div class="page-head">
+            <div class="eyebrow">Safety</div>
+            <h1>Emergency SOS</h1>
+          </div>
+
+          <!-- Trusted contact: a number pulled from this phone's own
+               contacts (Contact Picker API) where the device supports it,
+               otherwise entered once and remembered on this phone. The
+               big SOS button below calls whichever number is saved here. -->
+          <div class="card sos-contact-card">
+            <div class="card-title"><h2>Trusted contact</h2><span class="tag" id="trusted-contact-tag">Not set</span></div>
+            <p class="card-note">The SOS button calls this number and shares your live location. Pick someone who can act fast &mdash; family, a close friend, campus/office security.</p>
+            <div class="form-grid">
+              <label class="form-field">
+                <small>Name</small>
+                <input id="trusted-name" type="text" placeholder="e.g. Amma" autocomplete="off" />
+              </label>
+              <label class="form-field">
+                <small>Phone number</small>
+                <input id="trusted-phone" type="tel" placeholder="+91 90000 00000" autocomplete="off" />
+              </label>
+            </div>
+            <div class="bus-actions">
+              <button class="action-btn" id="pick-contact-btn"><i class="bi bi-person-lines-fill"></i> Choose from phone contacts</button>
+              <button class="action-btn secondary" id="save-contact-btn">Save contact</button>
+            </div>
+            <div class="action-msg" id="trusted-contact-msg"></div>
+          </div>
+
+          <!-- The dedicated SOS action: one tap calls the trusted contact
+               above AND silently captures a front + back photo as evidence
+               attached to the alert. -->
+          <div class="card sos-trigger-card">
+            <div class="card-title"><h2>Send SOS</h2><span class="tag" id="sos-trigger-tag">Ready</span></div>
+            <p class="card-note">Tapping this calls your trusted contact, takes a front and back photo, shares your location, and files an emergency report &mdash; in one go.</p>
+            <button class="btn danger sos-trigger-btn" id="sos-trigger-btn">
+              <i class="bi bi-broadcast"></i> Send SOS &amp; call now
+            </button>
+            <div class="sos-status" id="sos-trigger-status" aria-live="polite"></div>
+
+            <!-- Live camera preview shown briefly while each photo is
+                 taken, so nothing is captured out of sight of the person
+                 holding the phone. -->
+            <div class="camera-flow" id="camera-flow" hidden>
+              <div class="camera-flow-head">
+                <span id="camera-flow-label">Front camera</span>
+                <span id="camera-flow-status">Starting camera&hellip;</span>
+              </div>
+              <video id="camera-video" autoplay playsinline muted></video>
+              <canvas id="camera-canvas" hidden></canvas>
+              <button class="action-btn secondary" id="camera-skip-btn" type="button">Skip photos</button>
+            </div>
+
+            <!-- Captured evidence thumbnails -->
+            <div class="evidence-grid" id="evidence-grid">
+              <div class="evidence-slot" id="evidence-front">
+                <div class="evidence-placeholder"><i class="bi bi-camera"></i>Front photo</div>
+              </div>
+              <div class="evidence-slot" id="evidence-back">
+                <div class="evidence-placeholder"><i class="bi bi-camera"></i>Back photo</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Always-available official numbers, independent of the
+               trusted contact or backend being reachable. -->
+          <div class="card">
+            <div class="card-title"><h2>Official helplines</h2><span class="tag">Always works</span></div>
+            <div class="sos-actions">
+              <a class="btn-outline" href="tel:112">📞 Call 112</a>
+              <a class="btn-outline" href="tel:1091">📞 Women's helpline (1091)</a>
+              <a class="btn-outline" href="tel:108">📞 Ambulance (108)</a>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-title"><h2>Detailed report</h2><span class="tag">Optional</span></div>
+            <p class="card-note">Prefer to describe what's happening and pick a category first? Use the detailed emergency form instead.</p>
+            <button class="action-btn secondary" id="sos-open-detailed-btn">Open detailed report form</button>
+          </div>
+
+          <div class="card">
+            <div class="card-title"><h2>Other emergencies</h2><span class="tag">Quick access</span></div>
+            <div class="emergency-panel">
+              <button class="health-btn" id="health-btn">⚕️ Health emergency</button>
+              <button class="report-btn" id="breakdown-btn">🚫 Report bus issue</button>
+            </div>
+          </div>
+        </section>
+
         <!-- ============ MANAGE (fleet + demo mode) ============ -->
         <section class="page" data-page="manage">
 
@@ -276,6 +354,7 @@
         <div class="drawer-handle"></div>
         <div class="drawer-title">More</div>
         <div class="drawer-grid">
+          <button class="tab drawer-item" data-page="sos"><span class="tab-icon"><i class="bi bi-life-preserver"></i></span><span>SOS</span></button>
           <button class="tab drawer-item" data-page="prediction"><span class="tab-icon"><i class="bi bi-bar-chart-line"></i></span><span>Prediction</span></button>
           <button class="tab drawer-item" data-page="forecast"><span class="tab-icon"><i class="bi bi-calendar-event"></i></span><span>Forecast</span></button>
           <button class="tab drawer-item" data-page="insights"><span class="tab-icon"><i class="bi bi-lightbulb"></i></span><span>Insights</span></button>

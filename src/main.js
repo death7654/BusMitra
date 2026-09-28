@@ -179,7 +179,6 @@ let demoPollTimer = null;
 let weatherData = null;
 let weatherLastFetchedAt = 0;
 const WEATHER_REFRESH_MS = 10 * 60 * 1000; // matches the backend's own cache TTL
-let lastKnownPosition = null; // {latitude, longitude} from live tracking, if any
 
 // DOM refs (filled in on DOMContentLoaded)
 let fromEl, toEl, predictBtn, swapBtnEl, noticeEl, countEl, busListEl;
@@ -363,6 +362,10 @@ async function refreshCurrentPage({ manual = false } = {}) {
         const c = candidates.find((x) => x.bus.id === selectedBusId && !x.error);
         if (c) jobs.push(loadForecast(c.bus.id, c.fromStop.id));
       }
+      break;
+    case "sos":
+      // Nothing to poll here - the page is driven entirely by local
+      // state (trusted contact, captured photos) and user action.
       break;
   }
 
@@ -815,7 +818,7 @@ function setupOnboardingTip() {
 // tab. The drawer's own tab button (id="more-tab") lights up whenever
 // one of these is the active page, so the bar still shows *something*
 // is selected instead of going dark.
-const DRAWER_PAGES = new Set(["prediction", "forecast", "insights", "manage"]);
+const DRAWER_PAGES = new Set(["prediction", "forecast", "insights", "manage", "sos"]);
 let moreTabEl, drawerEl, drawerBackdropEl;
 
 function showPage(name) {
@@ -872,12 +875,32 @@ function setupNavigation() {
 }
 
 // Emergency / reporting DOM refs
-let sosBtnEl, healthBtnEl, breakdownBtnEl;
+let healthBtnEl, breakdownBtnEl;
 let sosModalEl, healthModalEl, breakdownModalEl;
 let sosOptionEls, sosDetailsEl, sosSubmitBtnEl, sosStatusEl;
 let healthAlertBtnEl;
 let breakdownBusEl, breakdownSubmitBtnEl, breakdownNotesEl, breakdownStatusEl;
 let selectedSosType = null;
+
+// ---------------------------------------------------------------------
+// Dedicated SOS page DOM refs
+// ---------------------------------------------------------------------
+let trustedNameEl, trustedPhoneEl, trustedContactTagEl, trustedContactMsgEl;
+let pickContactBtnEl, saveContactBtnEl;
+let sosTriggerBtnEl, sosTriggerTagEl, sosTriggerStatusEl;
+let sosOpenDetailedBtnEl;
+let cameraFlowEl, cameraFlowLabelEl, cameraFlowStatusEl, cameraVideoEl, cameraCanvasEl, cameraSkipBtnEl;
+let evidenceFrontEl, evidenceBackEl;
+
+// The trusted contact's number, pulled once from this phone's own
+// contacts (or typed in once) and remembered locally from then on -
+// nothing here ever leaves the device except inside the SOS report
+// the person explicitly sends.
+let trustedContact = { name: "", phone: "" };
+let capturedPhotos = { front: null, back: null };
+// Set by the "Skip photos" button to bail out of an in-progress
+// front/back capture sequence without waiting for either camera.
+let cameraSkipRequested = false;
 
 // ---------------------------------------------------------------------
 // Live map (Leaflet, dark tiles to match the app theme)
@@ -2672,6 +2695,14 @@ function setupTracking() {
 // report_bus_issue) that mirror the existing checkin_to_bus /
 // submit_crowd_report commands. They need matching #[tauri::command]
 // handlers added on the Rust side (see note below the file).
+//
+// The dedicated SOS page (setupSosPage and friends, below) sends four
+// extra fields on submit_sos_report - contactName, contactPhone,
+// photoFront, photoBack (the last two as JPEG data URLs) - so that
+// handler's signature needs to grow to accept and persist them.
+// Calling the trusted contact and taking the photos themselves are
+// pure front-end/webview APIs (tel: links, getUserMedia) and need no
+// native Rust command.
 // ---------------------------------------------------------------------
 function openModal(modalEl) {
   if (modalEl) modalEl.classList.add("open");
@@ -2681,7 +2712,6 @@ function closeModal(modalEl) {
 }
 
 function setupEmergencyFeatures() {
-  sosBtnEl = document.getElementById("sos-btn");
   healthBtnEl = document.getElementById("health-btn");
   breakdownBtnEl = document.getElementById("breakdown-btn");
 
@@ -2701,8 +2731,10 @@ function setupEmergencyFeatures() {
   breakdownSubmitBtnEl = document.getElementById("breakdown-submit");
   breakdownStatusEl = document.getElementById("breakdown-status");
 
-  // Open buttons
-  if (sosBtnEl) sosBtnEl.addEventListener("click", () => openModal(sosModalEl));
+  // The panel's pulsing SOS button now opens the dedicated SOS page
+  // (trusted contact + one-tap call/photo/report). Health emergency and
+  // bus-issue reporting live on that same page (see index.html), still
+  // wired to their modals here exactly as before.
   if (healthBtnEl) healthBtnEl.addEventListener("click", () => openModal(healthModalEl));
   if (breakdownBtnEl) {
     breakdownBtnEl.addEventListener("click", () => {
@@ -2734,6 +2766,279 @@ function setupEmergencyFeatures() {
   if (sosSubmitBtnEl) sosSubmitBtnEl.addEventListener("click", submitSosReport);
   if (healthAlertBtnEl) healthAlertBtnEl.addEventListener("click", submitHealthAlert);
   if (breakdownSubmitBtnEl) breakdownSubmitBtnEl.addEventListener("click", submitBreakdownReport);
+
+  setupSosPage();
+}
+
+// ---------------------------------------------------------------------
+// Dedicated SOS page: trusted contact (called on SOS) + one-tap
+// call + front/back photo capture + report submission.
+// ---------------------------------------------------------------------
+function setupSosPage() {
+  trustedNameEl = document.getElementById("trusted-name");
+  trustedPhoneEl = document.getElementById("trusted-phone");
+  trustedContactTagEl = document.getElementById("trusted-contact-tag");
+  trustedContactMsgEl = document.getElementById("trusted-contact-msg");
+  pickContactBtnEl = document.getElementById("pick-contact-btn");
+  saveContactBtnEl = document.getElementById("save-contact-btn");
+
+  sosTriggerBtnEl = document.getElementById("sos-trigger-btn");
+  sosTriggerTagEl = document.getElementById("sos-trigger-tag");
+  sosTriggerStatusEl = document.getElementById("sos-trigger-status");
+  sosOpenDetailedBtnEl = document.getElementById("sos-open-detailed-btn");
+
+  cameraFlowEl = document.getElementById("camera-flow");
+  cameraFlowLabelEl = document.getElementById("camera-flow-label");
+  cameraFlowStatusEl = document.getElementById("camera-flow-status");
+  cameraVideoEl = document.getElementById("camera-video");
+  cameraCanvasEl = document.getElementById("camera-canvas");
+  cameraSkipBtnEl = document.getElementById("camera-skip-btn");
+
+  evidenceFrontEl = document.getElementById("evidence-front");
+  evidenceBackEl = document.getElementById("evidence-back");
+
+  if (!sosTriggerBtnEl) return; // page not present in this build
+
+  loadTrustedContact();
+
+  pickContactBtnEl?.addEventListener("click", pickTrustedContactFromPhone);
+  saveContactBtnEl?.addEventListener("click", () => {
+    saveTrustedContact(trustedNameEl.value.trim(), trustedPhoneEl.value.trim());
+  });
+
+  sosTriggerBtnEl.addEventListener("click", triggerSosAlert);
+  sosOpenDetailedBtnEl?.addEventListener("click", () => openModal(sosModalEl));
+  cameraSkipBtnEl?.addEventListener("click", () => {
+    cameraSkipRequested = true;
+  });
+}
+
+// ---- Trusted contact: load / save / pick from the phone's own contacts ----
+
+function loadTrustedContact() {
+  try {
+    trustedContact = {
+      name: localStorage.getItem("busmitra_trusted_name") || "",
+      phone: localStorage.getItem("busmitra_trusted_phone") || "",
+    };
+  } catch {
+    trustedContact = { name: "", phone: "" };
+  }
+  if (trustedNameEl) trustedNameEl.value = trustedContact.name;
+  if (trustedPhoneEl) trustedPhoneEl.value = trustedContact.phone;
+  renderTrustedContactTag();
+}
+
+function renderTrustedContactTag() {
+  if (!trustedContactTagEl) return;
+  if (trustedContact.phone) {
+    trustedContactTagEl.textContent = `Calls ${trustedContact.name || trustedContact.phone}`;
+    trustedContactTagEl.classList.add("set");
+  } else {
+    trustedContactTagEl.textContent = "Not set";
+    trustedContactTagEl.classList.remove("set");
+  }
+}
+
+function saveTrustedContact(name, phone) {
+  trustedContact = { name, phone };
+  try {
+    localStorage.setItem("busmitra_trusted_name", name);
+    localStorage.setItem("busmitra_trusted_phone", phone);
+  } catch {
+    // Private-browsing / storage-disabled: contact just won't persist
+    // across restarts, but still works for this session.
+  }
+  renderTrustedContactTag();
+  if (trustedContactMsgEl) {
+    trustedContactMsgEl.textContent = phone ? "Saved on this phone." : "Cleared.";
+  }
+}
+
+// Uses the device's own address book via the Contact Picker API, where
+// the platform's webview supports it, so the person can choose someone
+// already saved on their phone rather than retyping a number. Falls
+// back to the manual fields (still saved to this device) everywhere else.
+async function pickTrustedContactFromPhone() {
+  if (!("contacts" in navigator) || !("ContactsManager" in window)) {
+    trustedContactMsgEl.textContent =
+      "Contact picker isn't available on this device \u2014 enter the number manually and tap Save.";
+    return;
+  }
+  try {
+    const [contact] = await navigator.contacts.select(["name", "tel"], { multiple: false });
+    if (!contact) return;
+    const name = contact.name?.[0] || "";
+    const phone = contact.tel?.[0] || "";
+    if (trustedNameEl) trustedNameEl.value = name;
+    if (trustedPhoneEl) trustedPhoneEl.value = phone;
+    saveTrustedContact(name, phone);
+  } catch (err) {
+    trustedContactMsgEl.textContent = `Couldn't read contacts (${err}) \u2014 enter the number manually.`;
+  }
+}
+
+// ---- Front + back photo capture ----
+
+function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// Opens one camera (front or back), shows a brief live preview so
+// nothing is captured out of sight of whoever is holding the phone,
+// then snapshots a frame and stops the stream. Returns a JPEG data URL,
+// or null if the camera isn't available or the person skips.
+async function captureOnePhoto(facingMode, label) {
+  if (!navigator.mediaDevices?.getUserMedia) return null;
+  if (cameraSkipRequested) return null;
+
+  cameraFlowEl.hidden = false;
+  cameraFlowLabelEl.textContent = label;
+  cameraFlowStatusEl.textContent = "Starting camera\u2026";
+
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: facingMode } },
+      audio: false,
+    });
+  } catch (err) {
+    cameraFlowStatusEl.textContent = `Camera unavailable (${err.message || err})`;
+    await wait(1000);
+    cameraFlowEl.hidden = true;
+    return null;
+  }
+
+  cameraVideoEl.srcObject = stream;
+  try {
+    await cameraVideoEl.play();
+  } catch {
+    // Autoplay can reject on some webviews even with muted+playsinline;
+    // the stream still renders once metadata loads, so continue anyway.
+  }
+
+  cameraFlowStatusEl.textContent = "Hold steady\u2026";
+  await wait(1200);
+
+  if (cameraSkipRequested) {
+    stream.getTracks().forEach((t) => t.stop());
+    cameraFlowEl.hidden = true;
+    return null;
+  }
+
+  const track = stream.getVideoTracks()[0];
+  const settings = track.getSettings?.() || {};
+  const w = settings.width || cameraVideoEl.videoWidth || 640;
+  const h = settings.height || cameraVideoEl.videoHeight || 480;
+  cameraCanvasEl.width = w;
+  cameraCanvasEl.height = h;
+  cameraCanvasEl.getContext("2d").drawImage(cameraVideoEl, 0, 0, w, h);
+  const dataUrl = cameraCanvasEl.toDataURL("image/jpeg", 0.85);
+
+  stream.getTracks().forEach((t) => t.stop());
+  cameraFlowEl.hidden = true;
+  return dataUrl;
+}
+
+function renderEvidenceThumb(which, dataUrl) {
+  const slot = which === "front" ? evidenceFrontEl : evidenceBackEl;
+  if (!slot) return;
+  slot.innerHTML = `
+    <img src="${dataUrl}" alt="${which === "front" ? "Front" : "Back"} evidence photo" />
+    <button type="button" class="evidence-retake" data-retake="${which}">Retake</button>
+  `;
+  slot.querySelector(".evidence-retake").addEventListener("click", async () => {
+    cameraSkipRequested = false;
+    const facingMode = which === "front" ? "user" : "environment";
+    const label = which === "front" ? "Front camera \u2014 face" : "Back camera \u2014 surroundings";
+    const photo = await captureOnePhoto(facingMode, label);
+    if (photo) {
+      capturedPhotos[which] = photo;
+      renderEvidenceThumb(which, photo);
+    }
+  });
+}
+
+// Captures a front photo (of whoever is holding the phone) followed by
+// a back photo (of the surroundings), in sequence, so a single SOS tap
+// leaves a visual record attached to the alert.
+async function captureEvidencePhotos() {
+  cameraSkipRequested = false;
+  if (!navigator.mediaDevices?.getUserMedia) {
+    sosTriggerStatusEl.textContent = "Camera access isn't available here \u2014 continuing without photos.";
+    return;
+  }
+  const front = await captureOnePhoto("user", "Front camera \u2014 face");
+  if (front) {
+    capturedPhotos.front = front;
+    renderEvidenceThumb("front", front);
+  }
+  if (cameraSkipRequested) return;
+  const back = await captureOnePhoto("environment", "Back camera \u2014 surroundings");
+  if (back) {
+    capturedPhotos.back = back;
+    renderEvidenceThumb("back", back);
+  }
+}
+
+// ---- The SOS trigger itself: call + photos + report, in one tap ----
+
+async function triggerSosAlert() {
+  sosTriggerBtnEl.disabled = true;
+  sosTriggerTagEl.textContent = "Working\u2026";
+  sosTriggerTagEl.classList.add("busy");
+  sosTriggerStatusEl.className = "sos-status";
+  sosTriggerStatusEl.textContent = "Capturing evidence photos\u2026";
+
+  await captureEvidencePhotos();
+
+  sosTriggerStatusEl.textContent = "Sending alert\u2026";
+  try {
+    const res = await invoke("submit_sos_report", {
+      sosType: selectedSosType || "trigger",
+      details: sosDetailsEl?.value || "",
+      busId: selectedBusId,
+      latitude: lastKnownPosition.latitude,
+      longitude: lastKnownPosition.longitude,
+      contactName: trustedContact.name,
+      contactPhone: trustedContact.phone,
+      photoFront: capturedPhotos.front,
+      photoBack: capturedPhotos.back,
+    });
+    sosTriggerStatusEl.textContent = res?.message || "Alert sent \u2014 help has been notified.";
+    sosTriggerStatusEl.className = "sos-status ok";
+  } catch (err) {
+    sosTriggerStatusEl.textContent = `Couldn't send the report automatically (${err}) \u2014 the call below still goes through.`;
+    sosTriggerStatusEl.className = "sos-status err";
+  }
+
+  // Browsers and mobile OSes never let a webpage silently place a call;
+  // this opens the phone's own dialer with the number ready to go, one
+  // tap away, rather than requiring the person to look up and type it.
+  // Dial the saved trusted contact if there is one; otherwise fall back to
+  // the national emergency number (112) so the button always leads to help.
+  const EMERGENCY_NUMBER = "112";
+  const hasContact = Boolean(trustedContact.phone);
+  const digits = hasContact
+    ? trustedContact.phone.replace(/[^\d+]/g, "")
+    : EMERGENCY_NUMBER;
+  const telUrl = `tel:${digits}`;
+  if (!hasContact) {
+    sosTriggerStatusEl.textContent += " No trusted contact saved \u2014 opening the dialer for 112.";
+  }
+  try {
+    // Tauri webviews often ignore tel: navigation, so hand it to the
+    // OS through the opener plugin; fall back to plain navigation.
+    const opener = window.__TAURI__?.opener;
+    if (opener?.openUrl) await opener.openUrl(telUrl);
+    else window.location.href = telUrl;
+  } catch {
+    window.location.href = telUrl;
+  }
+
+  sosTriggerTagEl.textContent = "Ready";
+  sosTriggerTagEl.classList.remove("busy");
+  sosTriggerBtnEl.disabled = false;
 }
 
 function populateBreakdownBusSelect() {
@@ -2951,11 +3256,7 @@ window.addEventListener("DOMContentLoaded", () => {
   setupNavigation();
   initMap();
   setupTracking();
-<<<<<<< HEAD
   setupEmergencyFeatures();
-  loadRoutes();
-=======
->>>>>>> a416797b8bc3e59b1ffb61989920bdb06d2d939a
   resetSelectedPanels();
   renderRideControls();
 

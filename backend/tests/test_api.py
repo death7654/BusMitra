@@ -825,3 +825,71 @@ def test_forecast_still_returns_a_full_day_and_week():
     assert len(data["hourly"]) == 24
     assert len(data["weekly"]) == 7
     assert all(0 <= p["predicted_fullness"] <= 100 for p in data["hourly"])
+
+# ---------------------------------------------------------
+# Emergency / bus-issue endpoints
+# ---------------------------------------------------------
+
+import base64
+
+_TINY_JPEG = "data:image/jpeg;base64," + base64.b64encode(
+    b"\xff\xd8\xff\xe0" + b"\x00" * 32
+).decode()
+
+
+def test_sos_report_with_photos_is_recorded():
+    response = client.post(
+        "/api/sos",
+        json={
+            "user_id": 424242,
+            "sos_type": "trigger",
+            "latitude": 12.3,
+            "longitude": 75.1,
+            "contact_name": "Amma",
+            "contact_phone": "+919000000000",
+            "photo_front": _TINY_JPEG,
+            "photo_back": _TINY_JPEG,
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["success"] is True
+    assert body["report_id"] > 0
+    assert "Photos couldn't" not in body["message"]
+
+
+def test_sos_report_survives_bad_photo_and_unknown_bus():
+    response = client.post(
+        "/api/sos",
+        json={
+            "user_id": 424243,
+            "bus_id": 999999,
+            "photo_front": "data:image/jpeg;base64,not-base64!!",
+        },
+    )
+
+    assert response.status_code == 200
+    assert "Photos couldn't" in response.json()["message"]
+
+
+def test_health_alert_without_location():
+    response = client.post("/api/health-alert", json={"user_id": 424244})
+
+    assert response.status_code == 200
+    assert response.json()["success"] is True
+
+
+def test_bus_issue_unknown_bus_404():
+    response = client.post(
+        "/api/bus-issue",
+        json={"user_id": 1, "bus_id": 999999, "issue_type": "breakdown"},
+    )
+
+    assert response.status_code == 404
+
+
+def test_emergency_listing_requires_admin_token():
+    response = client.get("/api/emergency-reports")
+
+    assert response.status_code in (401, 503)

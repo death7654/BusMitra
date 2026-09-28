@@ -235,6 +235,18 @@ struct OutageReportResponse {
     status: OutageStatus,
 }
 
+
+// Generic acknowledgement for the emergency/report endpoints. Every
+// field is optional so a backend that only returns {"message": "..."}
+// (or a bare {"success": true}) still deserializes cleanly.
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+struct SimpleReportResponse {
+    #[serde(default)]
+    success: Option<bool>,
+    #[serde(default)]
+    message: Option<String>,
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 struct WeatherResponse {
     latitude: f64,
@@ -759,6 +771,95 @@ async fn submit_outage_report(
 }
 
 #[tauri::command]
+async fn submit_sos_report(
+    app: AppHandle,
+    sos_type: Option<String>,
+    details: Option<String>,
+    bus_id: Option<i64>,
+    latitude: Option<f64>,
+    longitude: Option<f64>,
+    contact_name: Option<String>,
+    contact_phone: Option<String>,
+    photo_front: Option<String>,
+    photo_back: Option<String>,
+) -> Result<SimpleReportResponse, String> {
+    let user_id = app.state::<AppState>().user_id;
+    // Photos travel as base64 JPEG data URLs, so allow more time than
+    // the small JSON calls above on a weak mobile connection.
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(45))
+        .build()
+        .map_err(|e| format!("Could not start the SOS request: {e}"))?;
+    let res = client
+        .post(format!("{API_BASE_URL}/api/sos"))
+        .json(&serde_json::json!({
+            "user_id": user_id,
+            "sos_type": sos_type,
+            "details": details,
+            "bus_id": bus_id,
+            "latitude": latitude,
+            "longitude": longitude,
+            "contact_name": contact_name,
+            "contact_phone": contact_phone,
+            "photo_front": photo_front,
+            "photo_back": photo_back,
+        }))
+        .send()
+        .await
+        .map_err(|e| format!("Could not reach backend at {API_BASE_URL}: {e}"))?;
+
+    json_or_error::<SimpleReportResponse>(res, "SOS report").await
+}
+
+#[tauri::command]
+async fn submit_health_alert(
+    app: AppHandle,
+    bus_id: Option<i64>,
+    latitude: Option<f64>,
+    longitude: Option<f64>,
+) -> Result<SimpleReportResponse, String> {
+    let user_id = app.state::<AppState>().user_id;
+    let client = reqwest::Client::new();
+    let res = client
+        .post(format!("{API_BASE_URL}/api/health-alert"))
+        .json(&serde_json::json!({
+            "user_id": user_id,
+            "bus_id": bus_id,
+            "latitude": latitude,
+            "longitude": longitude,
+        }))
+        .send()
+        .await
+        .map_err(|e| format!("Could not reach backend at {API_BASE_URL}: {e}"))?;
+
+    json_or_error::<SimpleReportResponse>(res, "health alert").await
+}
+
+#[tauri::command]
+async fn report_bus_issue(
+    app: AppHandle,
+    bus_id: i64,
+    issue_type: String,
+    notes: Option<String>,
+) -> Result<SimpleReportResponse, String> {
+    let user_id = app.state::<AppState>().user_id;
+    let client = reqwest::Client::new();
+    let res = client
+        .post(format!("{API_BASE_URL}/api/bus-issue"))
+        .json(&serde_json::json!({
+            "user_id": user_id,
+            "bus_id": bus_id,
+            "issue_type": issue_type,
+            "notes": notes,
+        }))
+        .send()
+        .await
+        .map_err(|e| format!("Could not reach backend at {API_BASE_URL}: {e}"))?;
+
+    json_or_error::<SimpleReportResponse>(res, "bus issue report").await
+}
+
+#[tauri::command]
 async fn get_weather(
     latitude: Option<f64>,
     longitude: Option<f64>,
@@ -1074,6 +1175,9 @@ pub fn run() {
             checkout_from_bus,
             submit_crowd_report,
             submit_outage_report,
+            submit_sos_report,
+            submit_health_alert,
+            report_bus_issue,
             get_weather,
             get_bus_status,
             get_bus_eta,

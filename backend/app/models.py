@@ -1,12 +1,14 @@
 from datetime import datetime
 
 from sqlalchemy import (
+    Boolean,
     Column,
     DateTime,
     Float,
     ForeignKey,
     Integer,
     String,
+    Text,
 )
 from sqlalchemy.orm import relationship
 
@@ -395,3 +397,49 @@ class PredictionLog(Base):
     )
 
     bus = relationship("Bus")
+
+class SosReport(Base):
+    """
+    One SOS alert. Deliberately stores as little personal data as it can.
+
+    - The contact phone number is NOT kept, only a SHA-256 hash of it,
+      which is all the per-number SMS rate limit needs.
+    - Free-text details and the two evidence photos are kept only
+      encrypted (Fernet, key from BUSMITRA_SOS_KEY), and only until
+      the retention window passes (see services/sos.py purge_expired).
+    - The link texted to the contact carries a random token; only its
+      hash is stored here.
+    """
+
+    __tablename__ = "sos_reports"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, nullable=False, index=True)
+    # Plain integer, not a ForeignKey: an SOS must be accepted even if
+    # the bus was since deleted, and deleting a bus must not erase it.
+    bus_id = Column(Integer, nullable=True)
+
+    sos_type = Column(String, nullable=False, default="trigger")
+    details_enc = Column(Text, nullable=True)
+
+    latitude = Column(Float, nullable=True)
+    longitude = Column(Float, nullable=True)
+
+    contact_phone_hash = Column(String, nullable=True, index=True)
+    has_photo_front = Column(Boolean, nullable=False, default=False)
+    has_photo_back = Column(Boolean, nullable=False, default=False)
+
+    access_token_hash = Column(String, nullable=False)
+
+    # not_requested | not_configured | rate_limited | invalid_number
+    # | sent | failed
+    sms_status = Column(String, nullable=False, default="not_requested")
+    sms_sent_at = Column(DateTime, nullable=True)
+
+    created_at = Column(
+        DateTime,
+        default=datetime.utcnow,
+        nullable=False,
+        index=True,
+    )
+

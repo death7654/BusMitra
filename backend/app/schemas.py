@@ -543,3 +543,59 @@ class CalibrationResponse(BaseModel):
     overall_mae: float | None = None
     overall_bias: float | None = None
     message: str
+
+
+# ---------------------------------------------------------
+# Emergency & bus-issue reports
+# ---------------------------------------------------------
+
+class SosReportRequest(BaseModel):
+    user_id: int = Field(..., gt=0)
+    sos_type: str | None = None
+    details: str | None = Field(default=None, max_length=2000)
+    bus_id: int | None = None
+    latitude: float | None = Field(default=None, ge=-90, le=90)
+    longitude: float | None = Field(default=None, ge=-180, le=180)
+    contact_name: str | None = Field(default=None, max_length=100)
+    contact_phone: str | None = Field(default=None, max_length=32)
+    # JPEG data URLs. Deliberately unbounded here: an oversized or
+    # malformed photo is dropped in the router rather than rejected,
+    # because a 422 must never stop an emergency from being recorded.
+    photo_front: str | None = None
+    photo_back: str | None = None
+
+    @field_validator("sos_type")
+    @classmethod
+    def normalise_sos_type(cls, value):
+        if value is None:
+            return None
+        allowed = {"harassment", "theft", "accident", "other", "trigger"}
+        cleaned = value.strip().lower()
+        return cleaned if cleaned in allowed else "other"
+
+
+class HealthAlertRequest(BaseModel):
+    user_id: int = Field(..., gt=0)
+    bus_id: int | None = None
+    latitude: float | None = Field(default=None, ge=-90, le=90)
+    longitude: float | None = Field(default=None, ge=-180, le=180)
+
+
+class BusIssueRequest(BaseModel):
+    user_id: int = Field(..., gt=0)
+    bus_id: int = Field(..., gt=0)
+    issue_type: str = Field(default="other")
+    notes: str | None = Field(default=None, max_length=1000)
+
+    @field_validator("issue_type")
+    @classmethod
+    def normalise_issue_type(cls, value: str) -> str:
+        allowed = {"breakdown", "no-show", "overcrowded", "other"}
+        cleaned = (value or "other").strip().lower()
+        return cleaned if cleaned in allowed else "other"
+
+
+class EmergencyReportResponse(BaseModel):
+    success: bool = True
+    report_id: int
+    message: str
