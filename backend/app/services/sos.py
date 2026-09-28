@@ -18,12 +18,13 @@ repo or the app binary:
                             persistent disk on Render, or they are lost
                             on every deploy/restart.
   TWILIO_TRIAL_MODE         Set to 1/true while on a Twilio TRIAL account.
-                            Trial accounts only deliver Twilio's predefined
-                            template text, so the real SOS text is replaced
-                            by that template (see TRIAL_TEMPLATE_BODY). The
-                            contact must also be a *verified* number in the
-                            Twilio Console. Leave unset on a paid account.
-  TWILIO_TRIAL_BODY         Optional override for the template text above.
+                            Trial accounts cannot send custom text: Body
+                            must be the NAME of one of Twilio's templates
+                            (e.g. sms_account_alerts) and Twilio renders
+                            it. The real SOS text is therefore not sent.
+                            Leave unset on a paid account.
+  TWILIO_TRIAL_TEMPLATE     Template name to send in trial mode (default
+                            sms_account_alerts). See TRIAL_TEMPLATES.
   BUSMITRA_SOS_RETENTION_HOURS   Photos/details deleted after this long
                             (default 168 = 7 days).
   BUSMITRA_SOS_LINK_HOURS   How long the texted link works (default 24).
@@ -292,11 +293,22 @@ def _extra_twilio_params() -> dict[str, str]:
     return {str(k): str(v) for k, v in extra.items()}
 
 
-# The exact body Twilio's Console "Try out SMS" sends on trial accounts.
-TRIAL_TEMPLATE_BODY = (
-    "Alert: Your account balance is below $100. Please deposit funds to "
-    "avoid overdraft fees. Test message from Twilio."
-)
+# On a trial account the Messages API accepts only these values as Body
+# (Twilio docs: "Try out Twilio SMS Messaging"). Twilio expands the name
+# into its own sample text, so sending the rendered text gives error 572006.
+TRIAL_TEMPLATES = {
+    "sms_2fa",
+    "sms_appointment_reminders",
+    "sms_order_confirmation",
+    "sms_delivery_updates",
+    "sms_customer_support",
+    "sms_marketing_promotions",
+    "sms_event_notifications",
+    "sms_account_alerts",
+    "sms_feedback_surveys",
+    "sms_internal_alerts",
+}
+DEFAULT_TRIAL_TEMPLATE = "sms_account_alerts"
 
 # Twilio message states that mean the text will never arrive. "queued",
 # "accepted", "sending", "sent" and "delivered" are all fine.
@@ -310,7 +322,15 @@ def trial_mode() -> bool:
 
 
 def trial_body() -> str:
-    return os.environ.get("TWILIO_TRIAL_BODY", "").strip() or TRIAL_TEMPLATE_BODY
+    """The template NAME to send as Body while on a trial account."""
+    name = os.environ.get("TWILIO_TRIAL_TEMPLATE", "").strip() or DEFAULT_TRIAL_TEMPLATE
+    if name not in TRIAL_TEMPLATES:
+        log.error(
+            "TWILIO_TRIAL_TEMPLATE=%r is not a Twilio trial template; using %s",
+            name, DEFAULT_TRIAL_TEMPLATE,
+        )
+        return DEFAULT_TRIAL_TEMPLATE
+    return name
 
 
 def send_sms(to_number: str, body: str) -> bool:

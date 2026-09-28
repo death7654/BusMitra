@@ -178,19 +178,22 @@ def test_send_sms_http_error_is_failure(monkeypatch):
     assert real.send_sms("+918618435857", "hi") is False
 
 
-def test_trial_mode_sends_twilio_template_and_is_honest(monkeypatch, env):
+def test_trial_mode_sends_template_name_and_is_honest(monkeypatch, env):
     monkeypatch.setenv("TWILIO_TRIAL_MODE", "true")
     r = _post(UID + 20, phone="+1415" + str(random.randint(6000000, 6999999)))
     body = r.json()
     assert body["sms_status"] == "sent_trial"
     assert "does not include your location" in body["message"]
     _, text = env[0]
-    assert text == sos_service.TRIAL_TEMPLATE_BODY
-    assert "maps.google.com" not in text
+    # Twilio trial accounts reject anything but the template NAME (error 572006)
+    assert text == "sms_account_alerts"
 
 
-def test_trial_body_override(monkeypatch, env):
+def test_trial_template_override_and_invalid_fallback(monkeypatch, env):
     monkeypatch.setenv("TWILIO_TRIAL_MODE", "1")
-    monkeypatch.setenv("TWILIO_TRIAL_BODY", "Custom approved template")
+    monkeypatch.setenv("TWILIO_TRIAL_TEMPLATE", "sms_internal_alerts")
     _post(UID + 21, phone="+1415" + str(random.randint(7000000, 7999999)))
-    assert env[0][1] == "Custom approved template"
+    assert env[0][1] == "sms_internal_alerts"
+    monkeypatch.setenv("TWILIO_TRIAL_TEMPLATE", "Alert: custom text")
+    _post(UID + 22, phone="+1415" + str(random.randint(8000000, 8999999)))
+    assert env[1][1] == "sms_account_alerts"

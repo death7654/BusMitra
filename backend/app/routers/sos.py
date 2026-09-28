@@ -144,8 +144,8 @@ def create_sos_report(
             )
             trial = sos_service.trial_mode()
             if trial:
-                # Trial accounts only deliver Twilio's template text, so
-                # the location/link cannot be included.
+                # Trial accounts accept only a Twilio template NAME as
+                # Body, so the location/link cannot be included.
                 body = sos_service.trial_body()
             else:
                 body = _sms_body(

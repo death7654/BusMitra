@@ -709,7 +709,7 @@ TWILIO_ACCOUNT_SID     Twilio account SID
 TWILIO_AUTH_TOKEN      Twilio auth token
 TWILIO_FROM_NUMBER     Your Twilio number, e.g. +17372508034
 TWILIO_TRIAL_MODE      1/true while on a Twilio TRIAL account (see below)
-TWILIO_TRIAL_BODY      Optional: override the trial template text
+TWILIO_TRIAL_TEMPLATE  Trial template name (default: sms_account_alerts)
 ```
 
 `status: "queued"` in Twilio's response is a success. Delivery is reported
@@ -718,18 +718,20 @@ or a non-null `error_code` as a failed send.
 
 ### Trial accounts
 
-Twilio trial accounts (the Console "Try out SMS" flow) only deliver
-Twilio's predefined template text, and only to **verified** numbers:
+On a trial account the Messages API cannot send custom text. `Body` must
+be the **name** of a Twilio template, which Twilio expands itself (error
+`572006 Invalid template name` if you send anything else). Allowed names:
+`sms_2fa`, `sms_appointment_reminders`, `sms_order_confirmation`,
+`sms_delivery_updates`, `sms_customer_support`, `sms_marketing_promotions`,
+`sms_event_notifications`, `sms_account_alerts`, `sms_feedback_surveys`,
+`sms_internal_alerts`.
 
-1. Verify the contact's number in Console > Phone Numbers > Verified Caller IDs.
-2. Enable SMS geo-permissions for the destination country (India: +91).
-3. Set `TWILIO_TRIAL_MODE=true`.
+1. Set `TWILIO_TRIAL_MODE=true` (optionally `TWILIO_TRIAL_TEMPLATE=...`).
+2. The recipient must be a verified number in the Twilio Console. Twilio's
+   docs say trial SMS goes to verified **US** numbers only, so a +91
+   recipient may be accepted ("queued") but not delivered.
 
-In trial mode the contact receives the template ("Alert: Your account
-balance is below $100...") instead of the real SOS text, so the location
-and photo link are NOT sent. The API reports this honestly with
-`sms_status: "sent_trial"`. Upgrade the Twilio account and unset
-`TWILIO_TRIAL_MODE` for real SOS messages.
-
-India note: real (non-template) messages to +91 numbers on a paid account
-also require DLT registration of the sender ID and message template.
+The contact gets Twilio's sample text, not the SOS location or photo
+link. The API reports this honestly with `sms_status: "sent_trial"`.
+Upgrade the account and unset `TWILIO_TRIAL_MODE` for real SOS messages.
+For +91 numbers, a paid account also needs DLT registration.
