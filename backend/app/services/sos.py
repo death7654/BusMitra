@@ -278,11 +278,16 @@ def send_sms(to_number: str, body: str) -> bool:
         log.error("Twilio request failed: %s", type(exc).__name__)
         return False
     if res.status_code >= 400:
-        # Log Twilio's error code, never the credentials or the number.
         try:
-            code = res.json().get("code")
+            body = res.json()
         except ValueError:
-            code = None
-        log.error("Twilio rejected SMS: HTTP %s code %s", res.status_code, code)
+            body = {}
+        # Twilio's message can quote the destination number, so mask digits
+        # before logging to keep the "never log the number" rule.
+        reason = re.sub(r"\+?\d{6,}", "[number]", str(body.get("message", "")))
+        log.error(
+            "Twilio rejected SMS: HTTP %s code %s - %s (%s)",
+            res.status_code, body.get("code"), reason, body.get("more_info"),
+        )
         return False
     return True

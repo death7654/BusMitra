@@ -1465,6 +1465,92 @@ async function fetchBusStatesIndividually(candidates) {
   );
 }
 
+// ---------------------------------------------------------------------
+// Journeys that need a change of bus
+//
+// The direct-route scan in findCandidates stops at one bus. When it
+// finds nothing, ask the backend planner (services/journeys.py) for
+// options with a transfer. Only the first leg carries a live arrival
+// and crowd figure; later legs are shown without one, because the
+// connecting bus is not the one approaching its stop right now.
+// ---------------------------------------------------------------------
+function showNoJourney(message) {
+  noticeEl.textContent = message;
+  noticeEl.classList.remove("good");
+  noticeEl.classList.add("show");
+  busListEl.innerHTML = emptyState(
+    "bi-signpost-2",
+    "No bus or combination of buses found for this journey.<br>Try reversing the locations or choosing another pair of stops."
+  );
+}
+
+function journeyLegHtml(leg, isFirst) {
+  const stops = `${leg.stops_count} stop${leg.stops_count === 1 ? "" : "s"}`;
+  let live;
+
+  if (isFirst && leg.best_bus_number && leg.eta_seconds != null) {
+    const mins = Math.max(1, Math.round(leg.eta_seconds / 60));
+    const full =
+      leg.overall_fullness != null ? ` &middot; ${Math.round(leg.overall_fullness)}% full` : "";
+    live = `Next: ${esc(leg.best_bus_number)} in about ${mins} min${full}`;
+  } else if (isFirst) {
+    live = "No live bus approaching yet";
+  } else {
+    live = "Connecting bus: arrival not predicted";
+  }
+
+  return `<div class="journey-leg">
+    <div class="number" ${routeColorVars(leg.route_number)}>${esc(leg.route_number)}</div>
+    <div class="journey-leg-body">
+      <b>${esc(leg.board_stop_name)} &rarr; ${esc(leg.alight_stop_name)}</b>
+      <span>${stops} &middot; ${live}</span>
+    </div>
+  </div>`;
+}
+
+function renderJourneyOptions(plan) {
+  noticeEl.textContent = `No direct bus, but ${plan.message.charAt(0).toLowerCase()}${plan.message.slice(1)}`;
+  noticeEl.classList.remove("show");
+  noticeEl.classList.add("good", "show");
+
+  busListEl.innerHTML = plan.options
+    .map((opt) => {
+      const changes =
+        opt.transfers === 0 ? "Direct" : `${opt.transfers} change${opt.transfers === 1 ? "" : "s"}`;
+      const wait =
+        opt.first_departure_seconds != null
+          ? ` &middot; first bus in about ${Math.max(1, Math.round(opt.first_departure_seconds / 60))} min`
+          : "";
+      return `<div class="journey">
+        <div class="journey-head"><b>${changes}</b><span>${opt.total_stops} stops in total${wait}</span></div>
+        ${opt.legs.map((leg, i) => journeyLegHtml(leg, i === 0)).join("")}
+      </div>`;
+    })
+    .join("");
+}
+
+async function showJourneyOptions(fromName, toName) {
+  busListEl.innerHTML = skeletonBusList(2);
+
+  let plan;
+
+  try {
+    plan = await invoke("plan_journey", { fromStop: fromName, toStop: toName });
+  } catch (err) {
+    showNoJourney(
+      "No direct bus was found between these locations, and the journey planner could not be reached."
+    );
+    return;
+  }
+
+  if (!plan?.options?.length) {
+    showNoJourney(plan?.message || "No bus or combination of buses connects these locations.");
+    return;
+  }
+
+  renderJourneyOptions(plan);
+}
+
 async function runPredict() {
   const fromName = fromEl.value;
   const toName = toEl.value;
@@ -1473,13 +1559,10 @@ async function runPredict() {
   const found = findCandidates(fromName, toName);
 
   if (found.length === 0) {
-    noticeEl.textContent = "No direct bus was found between these locations. Try reversing them or picking a different pair of stops.";
-    noticeEl.classList.remove("good");
-    noticeEl.classList.add("show");
     candidates = [];
     countEl.textContent = "0";
-    busListEl.innerHTML = emptyState("bi-signpost-2", "No direct buses found for this journey.<br>Try reversing the locations or choosing another pair of stops.");
     renderSelected();
+    await showJourneyOptions(fromName, toName);
     return;
   }
 
@@ -3006,7 +3089,9 @@ async function triggerSosAlert() {
       photoBack: capturedPhotos.back,
     });
     sosTriggerStatusEl.textContent = res?.message || "Alert sent \u2014 help has been notified.";
-    sosTriggerStatusEl.className = "sos-status ok";
+    // Green only if the contact was actually texted (or none was saved).
+    const textFailed = Boolean(trustedContact.phone) && res?.sms_status !== "sent";
+    sosTriggerStatusEl.className = textFailed ? "sos-status err" : "sos-status ok";
   } catch (err) {
     sosTriggerStatusEl.textContent = `Couldn't send the report automatically (${err}) \u2014 the call below still goes through.`;
     sosTriggerStatusEl.className = "sos-status err";

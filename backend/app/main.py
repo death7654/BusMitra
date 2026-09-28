@@ -24,6 +24,7 @@ from .routers import calibration as calibration_router
 from .routers import outage as outage_router
 from .routers import weather as weather_router
 from .routers import sos as sos_router
+from .routers import emergency as emergency_router
 from .routers import tiles as tiles_router
 from .services import demo as demo_service
 from .services import learning as learning_service
@@ -287,3 +288,8 @@ app.include_router(calibration_router.router)
 app.include_router(outage_router.router)
 app.include_router(weather_router.router)
 app.include_router(sos_router.router)
+
+# Health alert and bus-issue reports. The SOS endpoint lives in sos.py, so
+# the older /api/sos in emergency.py was removed to avoid two handlers
+# for one path.
+app.include_router(emergency_router.router)

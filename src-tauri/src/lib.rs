@@ -245,6 +245,9 @@ struct SimpleReportResponse {
     success: Option<bool>,
     #[serde(default)]
     message: Option<String>,
+    // Only /api/sos sets this: "sent", "not_configured", "failed", etc.
+    #[serde(default)]
+    sms_status: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]

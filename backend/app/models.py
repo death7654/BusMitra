@@ -443,3 +443,34 @@ class SosReport(Base):
         index=True,
     )
 
+
+class HealthAlert(Base):
+    """
+    A rider's in-app health alert. Stores who, which bus and where, and
+    nothing else: no name, phone number or free text. Nothing here is
+    pushed to a driver; it is a record an operator can review.
+    """
+
+    __tablename__ = "health_alerts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, nullable=False, index=True)
+    # Plain integer, not a ForeignKey, for the same reason as SosReport:
+    # deleting a bus must not erase an alert.
+    bus_id = Column(Integer, nullable=True)
+    latitude = Column(Float, nullable=True)
+    longitude = Column(Float, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+
+
+class BusIssueReport(Base):
+    """A rider's report that a bus broke down, did not show, or is overcrowded."""
+
+    __tablename__ = "bus_issue_reports"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, nullable=False, index=True)
+    bus_id = Column(Integer, nullable=False, index=True)
+    issue_type = Column(String, nullable=False, default="other")
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
