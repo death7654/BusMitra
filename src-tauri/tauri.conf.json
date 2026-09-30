@@ -11,7 +11,6 @@
     "windows": [
       {
         "title": "BusMitra",
-        "fullscreen": true,
         "width": 800,
         "height": 600
       }

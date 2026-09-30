@@ -1,5 +1,6 @@
 from .database import Base, SessionLocal, engine
 from .models import Bus, BusStop, Route
+from .seed_network import add_extra_network
 
 
 def seed_database():
@@ -40,6 +41,13 @@ def seed_database():
         route_103 = Route(
             route_number="103",
             route_name="University - City Center",
+        )
+
+        bus_stops.extend(
+            add_extra_network(
+                db,
+                {"101": route_101, "102": route_102, "103": route_103},
+            )
         )
 
         db.add_all([

@@ -1,4 +1,3 @@
-import java.io.FileInputStream
 import java.util.Properties
 
 plugins {
@@ -14,12 +13,28 @@ val tauriProperties = Properties().apply {
     }
 }
 
-// Load keystore properties from gen/android/keystore.properties
+// Load keystore properties from src-tauri/gen/android/keystore.properties
 val keystorePropertiesFile = rootProject.file("keystore.properties")
-val keystoreProperties = Properties()
-if (keystorePropertiesFile.exists()) {
-    keystoreProperties.load(FileInputStream(keystorePropertiesFile))
+val keystoreProperties = Properties().apply {
+    if (keystorePropertiesFile.exists()) {
+        keystorePropertiesFile.inputStream().use { load(it) }
+    }
 }
+
+// Resolve signing values from keystore.properties first, then environment variables (CI)
+val releaseStoreFile: String? =
+    keystoreProperties.getProperty("storeFile") ?: System.getenv("KEYSTORE_PATH")
+val releaseKeyAlias: String? =
+    keystoreProperties.getProperty("keyAlias") ?: System.getenv("KEY_ALIAS")
+val releaseStorePassword: String? =
+    keystoreProperties.getProperty("password") ?: System.getenv("KEYSTORE_PASSWORD")
+val releaseKeyPassword: String? =
+    keystoreProperties.getProperty("password") ?: System.getenv("KEY_PASSWORD")
+
+val hasReleaseSigning = releaseStoreFile != null &&
+    releaseKeyAlias != null &&
+    releaseStorePassword != null &&
+    releaseKeyPassword != null
 
 android {
     compileSdk = 36
@@ -27,11 +42,11 @@ android {
 
     signingConfigs {
         create("release") {
-            if (keystorePropertiesFile.exists()) {
-                keyAlias = keystoreProperties["keyAlias"] as String
-                keyPassword = keystoreProperties["password"] as String
-                storeFile = file(keystoreProperties["storeFile"] as String)
-                storePassword = keystoreProperties["password"] as String
+            if (hasReleaseSigning) {
+                storeFile = file(releaseStoreFile!!)
+                storePassword = releaseStorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
             }
         }
     }
@@ -59,7 +74,9 @@ android {
             }
         }
         getByName("release") {
-            signingConfig = signingConfigs.getByName("release")
+            if (hasReleaseSigning) {
+                signingConfig = signingConfigs.getByName("release")
+            }
             isMinifyEnabled = true
             proguardFiles(
                 *fileTree(".") { include("**/*.pro") }
@@ -75,6 +92,19 @@ android {
 
     buildFeatures {
         buildConfig = true
+    }
+}
+
+// Fail with a clear message when a release build is requested without signing info
+gradle.taskGraph.whenReady {
+    val isReleaseBuild = allTasks.any { it.name.contains("Release", ignoreCase = true) }
+    if (isReleaseBuild && !hasReleaseSigning) {
+        throw GradleException(
+            "Release signing is not configured. Create keystore.properties in " +
+                "src-tauri/gen/android/ with keyAlias, password and storeFile " +
+                "(absolute path), or set KEYSTORE_PATH, KEY_ALIAS, KEYSTORE_PASSWORD " +
+                "and KEY_PASSWORD environment variables."
+        )
     }
 }
 

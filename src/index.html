@@ -74,6 +74,18 @@
           <div class="route-count"><span><b id="count">0</b> buses available</span><span>Soonest first</span></div>
 
           <div class="bus-list" id="bus-list"><div class="empty"><i class="bi bi-signpost-2"></i>Pick a starting location and destination, then hit Predict buses.</div></div>
+
+          <!-- Every way to reach the destination stop, including trips that
+               need a change of bus. Filled by renderPlans() in main.js. -->
+          <section class="plans" id="journey-plans" hidden>
+            <div class="plans-head"><h3 id="plans-title">All routes to your stop</h3><span class="tag" id="plans-count"></span></div>
+            <div class="plans-sort" id="plans-sort" role="group" aria-label="Sort routes">
+              <button type="button" class="chip active" data-sort="changes">Fewest changes</button>
+              <button type="button" class="chip" data-sort="stops">Fewest stops</button>
+              <button type="button" class="chip" data-sort="soonest">Soonest bus</button>
+            </div>
+            <div class="plans-list" id="plans-list"></div>
+          </section>
         </section>
 
         <!-- ============ MAP ============ -->
@@ -148,9 +160,13 @@
 
         <!-- ============ INSIGHTS ============ -->
         <section class="page" data-page="insights">
-          <div class="insight"><strong>&#129504; What's driving this estimate</strong><p id="pattern">Select a route to see how its number is calculated.</p></div>
-          <div class="insight"><strong>&#127919; How to read the numbers</strong><p id="confidence-info">Select a route to see how much of its number was measured and how much was forecast.</p></div>
-          <div class="insight"><strong>&#128678; Better choice</strong><p id="better">Compare the available buses on Predict instead of assuming the fastest bus is the best one.</p></div>
+          <div class="page-head">
+            <div class="eyebrow">Under the hood</div>
+            <h1>Why the bus says what it says.</h1>
+          </div>
+          <div class="ins-selected"><span>Selected bus</span><span class="tag" id="insights-tag">Select a bus</span></div>
+          <!-- Filled by renderInsights() in main.js -->
+          <div id="insights-body"><div class="empty"><i class="bi bi-lightbulb"></i>Pick a bus on Predict to see how its crowd number is worked out.</div></div>
         </section>
 
         <!-- ============ BOARD (live arrivals at one stop) ============ -->
@@ -193,7 +209,7 @@
                big SOS button below calls whichever number is saved here. -->
           <div class="card sos-contact-card">
             <div class="card-title"><h2>Trusted contact</h2><span class="tag" id="trusted-contact-tag">Not set</span></div>
-            <p class="card-note">The SOS button calls this number and shares your live location. Pick someone who can act fast &mdash; family, a close friend, campus/office security.</p>
+            <p class="card-note">The SOS button calls this number and shares your live location. Pick someone who can act fast &mdash; family, a close friend, campus/office security. If you don&rsquo;t save anyone, SOS alerts the app&rsquo;s default safety contact instead (or 112 if none is configured).</p>
             <div class="form-grid">
               <label class="form-field">
                 <small>Name</small>
@@ -340,6 +356,14 @@
 
         </section>
 
+
+        <!-- Floating SOS: reachable from every page. Press-and-hold (~1.2s) starts the
+             SOS immediately (photos, alert/SMS, call), so a stray tap or scroll can't. -->
+        <button class="sos-fab" id="sos-fab" type="button" aria-label="SOS. Press and hold to send an emergency alert now" title="Press and hold to send SOS">
+          <svg class="sos-fab-ring" viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="24" r="21"/></svg>
+          <span class="sos-fab-label">SOS</span>
+          <span class="sos-fab-hint" id="sos-fab-hint" aria-live="polite">Hold</span>
+        </button>
       </main>
 
       <!-- Backdrop for the "More" drawer. Sits above everything, below the
@@ -354,7 +378,9 @@
         <div class="drawer-handle"></div>
         <div class="drawer-title">More</div>
         <div class="drawer-grid">
-          <button class="tab drawer-item" data-page="sos"><span class="tab-icon"><i class="bi bi-life-preserver"></i></span><span>SOS</span></button>
+          <!-- SOS now lives in the floating hold-to-open button (#sos-fab). This entry stays
+               in the DOM, hidden, so the existing .tab/data-page navigation keeps working. -->
+          <button class="tab drawer-item" data-page="sos" hidden><span class="tab-icon"><i class="bi bi-life-preserver"></i></span><span>SOS</span></button>
           <button class="tab drawer-item" data-page="prediction"><span class="tab-icon"><i class="bi bi-bar-chart-line"></i></span><span>Prediction</span></button>
           <button class="tab drawer-item" data-page="forecast"><span class="tab-icon"><i class="bi bi-calendar-event"></i></span><span>Forecast</span></button>
           <button class="tab drawer-item" data-page="insights"><span class="tab-icon"><i class="bi bi-lightbulb"></i></span><span>Insights</span></button>
@@ -461,5 +487,67 @@
     </div>
   </div>
 </div>
+
+    <script>
+      /* SOS floating button: press-and-hold to fire the SOS immediately.
+         Reuses the hidden drawer entry and the SOS page button, so main.js is untouched. */
+      (function () {
+        var HOLD_MS = 1200;
+        var fab = document.getElementById('sos-fab');
+        if (!fab) return;
+        var hint = document.getElementById('sos-fab-hint');
+        var timer = null, done = false;
+
+        /* Completing the hold fires the whole SOS flow immediately: go to the
+           SOS page (so the camera preview is visible), then press the page's
+           own "Send SOS & call now" button, which takes the front + back
+           photos, sends the report/SMS to the trusted contact and opens the
+           dialer. The page button is disabled while a run is in progress, so
+           a second hold can't start a duplicate. */
+        function open() {
+          if (navigator.vibrate) navigator.vibrate([80, 40, 80]);
+          var nav = document.querySelector('.drawer-item[data-page="sos"]');
+          if (nav) nav.click();
+          setTimeout(function () {
+            var send = document.getElementById('sos-trigger-btn');
+            if (send && !send.disabled) send.click();
+          }, 0);
+        }
+        function start(e) {
+          if (e.type === 'keydown' && (e.repeat || (e.key !== ' ' && e.key !== 'Enter'))) return;
+          if (timer) return;
+          done = false;
+          fab.classList.add('holding');
+          hint.textContent = 'Keep holding';
+          timer = setTimeout(function () {
+            done = true; timer = null;
+            fab.classList.remove('holding');
+            hint.textContent = 'Hold';
+            open();
+          }, HOLD_MS);
+        }
+        function cancel() {
+          if (timer) { clearTimeout(timer); timer = null; }
+          fab.classList.remove('holding');
+          if (!done) hint.textContent = 'Hold';
+        }
+        fab.addEventListener('pointerdown', start);
+        ['pointerup', 'pointerleave', 'pointercancel'].forEach(function (t) { fab.addEventListener(t, cancel); });
+        fab.addEventListener('keydown', start);
+        fab.addEventListener('keyup', cancel);
+        fab.addEventListener('blur', cancel);
+        fab.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+        fab.addEventListener('click', function (e) { e.preventDefault(); });
+
+        /* Hide the button while already on the SOS page. */
+        var pages = document.querySelector('.pages');
+        function sync() {
+          var on = document.querySelector('.page.active[data-page="sos"]');
+          fab.classList.toggle('is-hidden', !!on);
+        }
+        if (pages) new MutationObserver(sync).observe(pages, { subtree: true, attributes: true, attributeFilter: ['class'] });
+        sync();
+      })();
+    </script>
   </body>
 </html>

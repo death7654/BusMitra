@@ -184,7 +184,7 @@ const WEATHER_REFRESH_MS = 10 * 60 * 1000; // matches the backend's own cache TT
 let fromEl, toEl, predictBtn, swapBtnEl, noticeEl, countEl, busListEl;
 let selectedTagEl, gaugeEl, gaugePctEl, levelEl, detailEl, nextEl, nextEtaEl;
 let recommendTextEl, historyTagEl, timeBarsEl, daysEl;
-let forecastTagEl, chartEl, patternEl, betterEl, confidenceInfoEl;
+let forecastTagEl, chartEl, insightsBodyEl, insightsTagEl;
 let myCoordsEl, mySpeedEl, myMatchWrapEl, trackBtnEl, checkoutBtnEl, rideMsgEl;
 let onlineDotEl, onlineTextEl;
 let liveMapEl, mapTagEl;
@@ -897,6 +897,24 @@ let evidenceFrontEl, evidenceBackEl;
 // nothing here ever leaves the device except inside the SOS report
 // the person explicitly sends.
 let trustedContact = { name: "", phone: "" };
+
+// ---- App-wide default SOS contact -----------------------------------
+// Used whenever the rider hasn't saved a trusted contact of their own, so
+// an SOS always reaches a real person instead of only opening a dialer.
+// >>> SET THIS to a number you actually monitor (family desk, campus /
+// >>> transport-office security, etc.), in international format, e.g.
+// >>> "+919000000000". While `phone` is blank the app falls back to
+// >>> dialing 112 only, exactly as before.
+const DEFAULT_SOS_CONTACT = { name: "BusMitra Safety Desk", phone: "+919747092232" };
+const EMERGENCY_FALLBACK_NUMBER = "112";
+
+// The contact an SOS will actually use: the rider's own if saved,
+// otherwise the app default, otherwise nobody (112 dial only).
+function effectiveSosContact() {
+  if (trustedContact.phone) return { ...trustedContact, isDefault: false };
+  if (DEFAULT_SOS_CONTACT.phone) return { ...DEFAULT_SOS_CONTACT, isDefault: true };
+  return { name: "", phone: "", isDefault: false };
+}
 let capturedPhotos = { front: null, back: null };
 // Set by the "Skip photos" button to bail out of an in-progress
 // front/back capture sequence without waiting for either camera.
@@ -1474,7 +1492,113 @@ async function fetchBusStatesIndividually(candidates) {
 // and crowd figure; later legs are shown without one, because the
 // connecting bus is not the one approaching its stop right now.
 // ---------------------------------------------------------------------
+// ---- Multi-stage planner: every way to reach the destination stop ----
+let planOptions = [];        // options from the last plan_journey call
+let planSort = "changes";
+let planGeneration = 0;      // discards plan responses from superseded searches
+
+const nullLast = (a, b) => (a ?? Infinity) - (b ?? Infinity);
+const PLAN_SORTS = {
+  changes: (a, b) => a.transfers - b.transfers || a.total_stops - b.total_stops,
+  stops: (a, b) => a.total_stops - b.total_stops || a.transfers - b.transfers,
+  soonest: (a, b) => nullLast(a.first_departure_seconds, b.first_departure_seconds) || a.transfers - b.transfers,
+};
+
+function planLegHtml(leg, isFirst) {
+  const stops = `${leg.stops_count} stop${leg.stops_count === 1 ? "" : "s"}`;
+  let live;
+  if (isFirst && leg.best_bus_number && leg.eta_seconds != null) {
+    const mins = Math.max(1, Math.round(leg.eta_seconds / 60));
+    const full = leg.overall_fullness != null ? ` &middot; ${Math.round(leg.overall_fullness)}% full` : "";
+    live = `Next: ${esc(leg.best_bus_number)} in about ${mins} min${full}`;
+  } else if (isFirst) {
+    live = "No live bus approaching yet";
+  } else {
+    live = "Connecting bus: arrival not predicted";
+  }
+  return `<li class="plan-stage" ${routeColorVars(leg.route_number)}>
+    <div class="plan-stage-body">
+      <div class="plan-route"><span class="number" ${routeColorVars(leg.route_number)}>${esc(leg.route_number)}</span><b>${isFirst ? "Board" : "Then board"} at ${esc(leg.board_stop_name)}</b></div>
+      <span>Ride ${stops} to ${esc(leg.alight_stop_name)} &middot; ${live}</span>
+    </div>
+  </li>`;
+}
+
+function planOptionHtml(opt, isBest) {
+  const changes = opt.transfers === 0 ? "Direct" : `${opt.transfers} change${opt.transfers === 1 ? "" : "s"}`;
+  const wait = opt.first_departure_seconds != null
+    ? ` &middot; first bus ~${Math.max(1, Math.round(opt.first_departure_seconds / 60))} min`
+    : "";
+  const stages = opt.legs.map((leg, i) => {
+    const change = i < opt.legs.length - 1
+      ? `<li class="plan-change"><i class="bi bi-arrow-repeat"></i>Change at ${esc(leg.alight_stop_name)}</li>`
+      : "";
+    return planLegHtml(leg, i === 0) + change;
+  }).join("");
+  const last = opt.legs[opt.legs.length - 1];
+  return `<div class="plan${isBest ? " is-best" : ""}">
+    <div class="plan-head"><b>${changes}${isBest ? '<em class="plan-best">Best</em>' : ""}</b><span>${opt.total_stops} stops in total${wait}</span></div>
+    <ol class="plan-stages">${stages}<li class="plan-arrive">${esc(last.alight_stop_name)} <span>&middot; you're there</span></li></ol>
+  </div>`;
+}
+
+function renderPlans() {
+  const box = document.getElementById("journey-plans");
+  const list = document.getElementById("plans-list");
+  if (!box || !list) return;
+  if (!planOptions.length) {
+    box.hidden = true;
+    return;
+  }
+  const sorted = [...planOptions].sort(PLAN_SORTS[planSort] || PLAN_SORTS.changes).slice(0, 6);
+  list.innerHTML = sorted.map((opt, i) => planOptionHtml(opt, i === 0 && sorted.length > 1)).join("");
+  document.getElementById("plans-count").textContent =
+    `${planOptions.length} option${planOptions.length === 1 ? "" : "s"}`;
+  document.getElementById("plans-title").textContent = `All routes to ${toEl?.value || "your stop"}`;
+  document.querySelectorAll("#plans-sort .chip").forEach((chip) =>
+    chip.classList.toggle("active", chip.dataset.sort === planSort)
+  );
+  box.hidden = false;
+}
+
+function hidePlans() {
+  planGeneration++;
+  planOptions = [];
+  const box = document.getElementById("journey-plans");
+  if (box) box.hidden = true;
+}
+
+// Asks the backend planner for every option to the destination. Returns
+// the plan (or null on failure) and, when the search is still current,
+// fills the "All routes" section. Direct buses are already on screen as
+// live cards, so only trips that need a change are listed here unless
+// there is no direct bus at all.
+async function loadPlans(fromName, toName, { includeDirect = false } = {}) {
+  const generation = ++planGeneration;
+  let plan = null;
+  try {
+    plan = await invoke("plan_journey", { fromStop: fromName, toStop: toName });
+  } catch {
+    plan = null;
+  }
+  if (generation !== planGeneration) return plan;
+  const all = plan?.options || [];
+  planOptions = includeDirect ? all : all.filter((o) => o.transfers > 0);
+  renderPlans();
+  return plan;
+}
+
+function setupPlanner() {
+  document.getElementById("plans-sort")?.addEventListener("click", (e) => {
+    const chip = e.target.closest(".chip");
+    if (!chip) return;
+    planSort = chip.dataset.sort;
+    renderPlans();
+  });
+}
+
 function showNoJourney(message) {
+  hidePlans();
   noticeEl.textContent = message;
   noticeEl.classList.remove("good");
   noticeEl.classList.add("show");
@@ -1484,71 +1608,30 @@ function showNoJourney(message) {
   );
 }
 
-function journeyLegHtml(leg, isFirst) {
-  const stops = `${leg.stops_count} stop${leg.stops_count === 1 ? "" : "s"}`;
-  let live;
-
-  if (isFirst && leg.best_bus_number && leg.eta_seconds != null) {
-    const mins = Math.max(1, Math.round(leg.eta_seconds / 60));
-    const full =
-      leg.overall_fullness != null ? ` &middot; ${Math.round(leg.overall_fullness)}% full` : "";
-    live = `Next: ${esc(leg.best_bus_number)} in about ${mins} min${full}`;
-  } else if (isFirst) {
-    live = "No live bus approaching yet";
-  } else {
-    live = "Connecting bus: arrival not predicted";
-  }
-
-  return `<div class="journey-leg">
-    <div class="number" ${routeColorVars(leg.route_number)}>${esc(leg.route_number)}</div>
-    <div class="journey-leg-body">
-      <b>${esc(leg.board_stop_name)} &rarr; ${esc(leg.alight_stop_name)}</b>
-      <span>${stops} &middot; ${live}</span>
-    </div>
-  </div>`;
-}
-
-function renderJourneyOptions(plan) {
-  noticeEl.textContent = `No direct bus, but ${plan.message.charAt(0).toLowerCase()}${plan.message.slice(1)}`;
-  noticeEl.classList.remove("show");
-  noticeEl.classList.add("good", "show");
-
-  busListEl.innerHTML = plan.options
-    .map((opt) => {
-      const changes =
-        opt.transfers === 0 ? "Direct" : `${opt.transfers} change${opt.transfers === 1 ? "" : "s"}`;
-      const wait =
-        opt.first_departure_seconds != null
-          ? ` &middot; first bus in about ${Math.max(1, Math.round(opt.first_departure_seconds / 60))} min`
-          : "";
-      return `<div class="journey">
-        <div class="journey-head"><b>${changes}</b><span>${opt.total_stops} stops in total${wait}</span></div>
-        ${opt.legs.map((leg, i) => journeyLegHtml(leg, i === 0)).join("")}
-      </div>`;
-    })
-    .join("");
-}
-
 async function showJourneyOptions(fromName, toName) {
   busListEl.innerHTML = skeletonBusList(2);
+  hidePlans();
 
-  let plan;
+  const plan = await loadPlans(fromName, toName, { includeDirect: true });
 
-  try {
-    plan = await invoke("plan_journey", { fromStop: fromName, toStop: toName });
-  } catch (err) {
+  if (!plan) {
     showNoJourney(
       "No direct bus was found between these locations, and the journey planner could not be reached."
     );
     return;
   }
-
-  if (!plan?.options?.length) {
-    showNoJourney(plan?.message || "No bus or combination of buses connects these locations.");
+  if (!plan.options?.length) {
+    showNoJourney(plan.message || "No bus or combination of buses connects these locations.");
     return;
   }
 
-  renderJourneyOptions(plan);
+  noticeEl.textContent = `No direct bus, but ${plan.message.charAt(0).toLowerCase()}${plan.message.slice(1)}`;
+  noticeEl.classList.remove("show");
+  noticeEl.classList.add("good", "show");
+  busListEl.innerHTML = emptyState(
+    "bi-signpost-split",
+    "No direct bus on this trip.<br>See the routes with changes below."
+  );
 }
 
 async function runPredict() {
@@ -1557,6 +1640,7 @@ async function runPredict() {
   selectedBusId = null;
 
   const found = findCandidates(fromName, toName);
+  hidePlans();
 
   if (found.length === 0) {
     candidates = [];
@@ -1608,6 +1692,10 @@ async function runPredict() {
 
   renderList();
   renderSelected();
+
+  // Also list routes that need a change of bus. Not awaited: the live
+  // cards above are the priority and the plan fills in when it arrives.
+  loadPlans(fromName, toName);
 }
 
 // Re-fetch the numbers for buses already on screen, without disturbing
@@ -2461,6 +2549,121 @@ async function resetDemo() {
 // ---------------------------------------------------------------------
 // Rendering: selected route detail (gauge, recommendation, forecast)
 // ---------------------------------------------------------------------
+// ---------------------------------------------------------------------
+// Insights page: how the selected bus's number was worked out
+// ---------------------------------------------------------------------
+const CONFIDENCE_TONE = { high: "good", medium: "ok", low: "warn", model_only: "muted" };
+
+function renderInsightsEmpty() {
+  if (insightsTagEl) insightsTagEl.textContent = "Select a bus";
+  if (insightsBodyEl) {
+    insightsBodyEl.innerHTML = emptyState(
+      "bi-lightbulb",
+      "Pick a bus on Predict to see how its crowd number is worked out."
+    );
+  }
+}
+
+function insightSourceRow(icon, name, detail, pct, weight) {
+  const w = typeof weight === "number" ? `<span>weight ${weight.toFixed(2)}</span>` : "";
+  return `<div class="ins-source"><i class="bi ${icon}"></i>` +
+    `<div class="ins-source-main"><b>${esc(name)}</b><span>${esc(detail)}</span></div>` +
+    `<div class="ins-source-val"><b>${pct}%</b>${w}</div></div>`;
+}
+
+function insightCompareRow(label, v, current) {
+  return `<div class="ins-cmp-row${current ? " is-current" : ""}">` +
+    `<span class="ins-cmp-name">${esc(label)}</span>` +
+    `<div class="ins-cmp-track"><div style="width:${Math.min(100, Math.max(2, v))}%;background:${bandColor(v)}"></div></div>` +
+    `<b>${v}%</b></div>`;
+}
+
+function renderInsights(c, alt) {
+  if (!insightsBodyEl) return;
+  const { bus, status, prediction } = c;
+  const pct = Math.round(prediction.final_fullness);
+  const color = colorFor(prediction.status);
+  const liveW = Math.round((prediction.live_weight ?? 0) * 100);
+  const modelW = 100 - liveW;
+  const conf = prediction.confidence || "model_only";
+  const samples = prediction.observed_samples ?? 0;
+
+  if (insightsTagEl) insightsTagEl.textContent = bus.bus_number;
+
+  // ---- Card 1: where the number comes from ----
+  const rows = [];
+  if (status.active_passengers > 0) {
+    const n = status.active_passengers;
+    rows.push(insightSourceRow("bi-phone", `${n} phone${n === 1 ? "" : "s"} aboard`,
+      "Live GPS from riders", Math.round(status.passenger_fullness), status.passenger_weight));
+  }
+  if (status.manual_fullness != null) {
+    const n = status.reporter_count;
+    rows.push(insightSourceRow("bi-people", `${n} rider report${n === 1 ? "" : "s"}`,
+      "Crowding reported by passengers", Math.round(status.manual_fullness), status.report_weight));
+  }
+  rows.push(insightSourceRow("bi-cpu", "ML forecast",
+    "Model estimate for this bus and time", Math.round(prediction.predicted_fullness), null));
+
+  const blend =
+    (liveW > 0 ? `<div class="ins-blend-live" style="flex:${liveW} 1 0"></div>` : "") +
+    (modelW > 0 ? `<div class="ins-blend-model" style="flex:${modelW} 1 0"></div>` : "");
+  const blendNote = liveW > 0
+    ? `Live signals read ${Math.round(status.overall_fullness)}%, blended with the forecast.`
+    : "No live signal on this bus yet, so this is the forecast alone.";
+
+  const drivers = `<div class="card">
+    <div class="card-title"><h2>What's driving this estimate</h2><span class="tag">${esc(prediction.status)}</span></div>
+    <div class="ins-hero"><b style="color:${color}">${pct}%</b><span style="color:${color}">full</span></div>
+    <div class="ins-blend">${blend}</div>
+    <div class="ins-legend">
+      <span><i style="background:var(--cyan)"></i>Live <b>${liveW}%</b></span>
+      <span><i style="background:var(--blue)"></i>Forecast <b>${modelW}%</b></span>
+    </div>
+    ${rows.join("")}
+    <p class="ins-note" style="margin-top:6px">${esc(blendNote)}</p>
+  </div>`;
+
+  // ---- Card 2: how much to trust it ----
+  const label = CONFIDENCE_LABEL[prediction.confidence] || "Unrated";
+  const modelNote = samples
+    ? `The model has ${samples} real observation${samples === 1 ? "" : "s"} of this bus to learn from.`
+    : "The model has no real observations of this bus yet \u2014 its forecast comes from the synthetic baseline.";
+  const trust = `<div class="card">
+    <div class="card-title"><h2>How much to trust it</h2><span class="tag">Confidence</span></div>
+    <span class="ins-chip ${CONFIDENCE_TONE[conf] || "muted"}"><i class="bi bi-shield-check"></i>${esc(label)}</span>
+    <div class="ins-trust-split">
+      <div><b>${liveW}%</b><span>from live signals</span></div>
+      <div><b>${modelW}%</b><span>from the forecast</span></div>
+    </div>
+    <p class="ins-note">${esc(modelNote)}</p>
+  </div>`;
+
+  // ---- Card 3: better choice ----
+  let better;
+  if (alt) {
+    const altPct = Math.round(alt.prediction.final_fullness);
+    const diff = pct - altPct;
+    const a = esc(alt.bus.bus_number);
+    const b = esc(bus.bus_number);
+    const altDist = formatDistance(alt.distance) || "no live GPS yet";
+    let verdict;
+    if (diff >= 5) verdict = `${a} is ${diff} points less crowded than ${b} right now (${altDist}).`;
+    else if (diff <= -5) verdict = `${b} is the less crowded choice \u2014 ${-diff} points below ${a}.`;
+    else verdict = `${b} and ${a} are about equally crowded right now.`;
+    better = `${insightCompareRow(bus.bus_number, pct, true)}${insightCompareRow(alt.bus.bus_number, altPct, false)}
+      <div class="ins-verdict"><i class="bi bi-signpost-split"></i><span>${verdict}</span></div>`;
+  } else {
+    better = `<p class="ins-note">No alternative bus is available for this exact journey.</p>`;
+  }
+  const compare = `<div class="card">
+    <div class="card-title"><h2>Better choice</h2><span class="tag">Same journey</span></div>
+    ${better}
+  </div>`;
+
+  insightsBodyEl.innerHTML = drivers + trust + compare;
+}
+
 function resetSelectedPanels() {
   selectedTagEl.textContent = "Select a bus";
   historyTagEl.textContent = "Select a route";
@@ -2475,12 +2678,7 @@ function resetSelectedPanels() {
   if (crowdSourceEl) {
   crowdSourceEl.textContent = "—";
 }  recommendTextEl.textContent = "Pick a route to see the best travel option.";
-  patternEl.textContent = "Select a route to see how its number is calculated.";
-  if (confidenceInfoEl) {
-    confidenceInfoEl.textContent =
-      "Select a route to see how much of its number was measured and how much was forecast.";
-  }
-  betterEl.textContent = "Compare the available buses above instead of assuming the fastest bus is the best one.";
+  renderInsightsEmpty();
   timeBarsEl.innerHTML = "";
   daysEl.innerHTML = "";
   clearChart();
@@ -2542,56 +2740,17 @@ function renderSelected() {
   crowdSourceEl.textContent = crowdSourceLabel(status);
 }
 
-  // Spell out both signals *and* how much each was trusted, since the
-  // blend is now weighted by evidence rather than a fixed 50/50.
-  const parts = [];
-  if (status.active_passengers > 0) {
-    parts.push(
-      `${Math.round(status.passenger_fullness)}% from ${status.active_passengers} phone${status.active_passengers === 1 ? "" : "s"} aboard (weight ${status.passenger_weight.toFixed(2)})`
-    );
-  }
-  if (status.manual_fullness != null) {
-    parts.push(
-      `${Math.round(status.manual_fullness)}% from ${status.reporter_count} rider report${status.reporter_count === 1 ? "" : "s"} (weight ${status.report_weight.toFixed(2)})`
-    );
-  }
-  // The blend is evidence-weighted, so the split has to be read off the
-  // response instead of hard-coded. On a bus nobody is riding with the
-  // app, the live half is worth nothing and the backend says so.
-  const liveWeight = prediction.live_weight ?? 0;
-  const modelWeight = prediction.model_weight ?? 1;
-
-  patternEl.textContent = parts.length
-    ? `${parts.join(" and ")}, giving ${Math.round(status.overall_fullness)}% live \u2014 weighted ${Math.round(liveWeight * 100)}/${Math.round(modelWeight * 100)} against a ${Math.round(prediction.predicted_fullness)}% ML forecast.`
-    : `No live signal on this bus yet, so the ${Math.round(prediction.final_fullness)}% figure is the ML forecast alone.`;
-
-  if (confidenceInfoEl) {
-    const label = CONFIDENCE_LABEL[prediction.confidence] || "Unrated";
-    const samples = prediction.observed_samples ?? 0;
-
-    // Two independent ways to be wrong, so both get stated: no live
-    // signal, and a model that has never seen this bus in the real
-    // world. Collapsing them into one number would hide whichever is
-    // worse.
-    const modelNote = samples
-      ? `The model has ${samples} real observation${samples === 1 ? "" : "s"} of this bus to learn from.`
-      : "The model has no real observations of this bus yet \u2014 its forecast comes from the synthetic baseline.";
-
-    confidenceInfoEl.textContent =
-      `${label}: ${Math.round(liveWeight * 100)}% of this figure came from live signals, ${Math.round(modelWeight * 100)}% from the forecast. ${modelNote}`;
-  }
-
   const alt = candidates
     .filter((x) => !x.error && x.bus.id !== bus.id)
     .sort((a, b) => a.prediction.final_fullness - b.prediction.final_fullness)[0];
   if (alt) {
     const altDist = formatDistance(alt.distance) || "no live GPS yet";
     recommendTextEl.textContent = `${alt.bus.bus_number} is currently the lower-crowd alternative at ${Math.round(alt.prediction.final_fullness)}% (${altDist}).`;
-    betterEl.textContent = `${alt.bus.bus_number} is lower-crowd than ${bus.bus_number} right now \u2014 ${Math.round(alt.prediction.final_fullness)}% vs ${pct}%.`;
   } else {
     recommendTextEl.textContent = "This is the only direct bus for the selected journey.";
-    betterEl.textContent = "No alternative bus is available for this exact journey.";
   }
+
+  renderInsights(c, alt);
 
   renderOutage(status.outage);
 
@@ -2917,6 +3076,9 @@ function renderTrustedContactTag() {
   if (trustedContact.phone) {
     trustedContactTagEl.textContent = `Calls ${trustedContact.name || trustedContact.phone}`;
     trustedContactTagEl.classList.add("set");
+  } else if (DEFAULT_SOS_CONTACT.phone) {
+    trustedContactTagEl.textContent = `Default: ${DEFAULT_SOS_CONTACT.name || "safety desk"}`;
+    trustedContactTagEl.classList.add("set");
   } else {
     trustedContactTagEl.textContent = "Not set";
     trustedContactTagEl.classList.remove("set");
@@ -3076,6 +3238,7 @@ async function triggerSosAlert() {
   await captureEvidencePhotos();
 
   sosTriggerStatusEl.textContent = "Sending alert\u2026";
+  const contact = effectiveSosContact();
   try {
     const res = await invoke("submit_sos_report", {
       sosType: selectedSosType || "trigger",
@@ -3083,14 +3246,14 @@ async function triggerSosAlert() {
       busId: selectedBusId,
       latitude: lastKnownPosition.latitude,
       longitude: lastKnownPosition.longitude,
-      contactName: trustedContact.name,
-      contactPhone: trustedContact.phone,
+      contactName: contact.name,
+      contactPhone: contact.phone,
       photoFront: capturedPhotos.front,
       photoBack: capturedPhotos.back,
     });
     sosTriggerStatusEl.textContent = res?.message || "Alert sent \u2014 help has been notified.";
     // Green only if the contact was actually texted (or none was saved).
-    const textFailed = Boolean(trustedContact.phone) && res?.sms_status !== "sent";
+    const textFailed = Boolean(contact.phone) && res?.sms_status !== "sent";
     sosTriggerStatusEl.className = textFailed ? "sos-status err" : "sos-status ok";
   } catch (err) {
     sosTriggerStatusEl.textContent = `Couldn't send the report automatically (${err}) \u2014 the call below still goes through.`;
@@ -3102,14 +3265,15 @@ async function triggerSosAlert() {
   // tap away, rather than requiring the person to look up and type it.
   // Dial the saved trusted contact if there is one; otherwise fall back to
   // the national emergency number (112) so the button always leads to help.
-  const EMERGENCY_NUMBER = "112";
-  const hasContact = Boolean(trustedContact.phone);
+  const hasContact = Boolean(contact.phone);
   const digits = hasContact
-    ? trustedContact.phone.replace(/[^\d+]/g, "")
-    : EMERGENCY_NUMBER;
+    ? contact.phone.replace(/[^\d+]/g, "")
+    : EMERGENCY_FALLBACK_NUMBER;
   const telUrl = `tel:${digits}`;
   if (!hasContact) {
-    sosTriggerStatusEl.textContent += " No trusted contact saved \u2014 opening the dialer for 112.";
+    sosTriggerStatusEl.textContent += ` No trusted contact saved \u2014 opening the dialer for ${EMERGENCY_FALLBACK_NUMBER}.`;
+  } else if (contact.isDefault) {
+    sosTriggerStatusEl.textContent += ` No trusted contact saved \u2014 alerting ${contact.name || "the safety desk"} instead.`;
   }
   try {
     // Tauri webviews often ignore tel: navigation, so hand it to the
@@ -3223,9 +3387,8 @@ window.addEventListener("DOMContentLoaded", () => {
   daysEl = document.getElementById("days");
   forecastTagEl = document.getElementById("forecast-tag");
   chartEl = document.getElementById("chart");
-  patternEl = document.getElementById("pattern");
-  betterEl = document.getElementById("better");
-  confidenceInfoEl = document.getElementById("confidence-info");
+  insightsBodyEl = document.getElementById("insights-body");
+  insightsTagEl = document.getElementById("insights-tag");
   myCoordsEl = document.getElementById("my-coords");
   mySpeedEl = document.getElementById("my-speed");
   myMatchWrapEl = document.getElementById("my-match-wrap");
@@ -3341,6 +3504,7 @@ window.addEventListener("DOMContentLoaded", () => {
   setupNavigation();
   initMap();
   setupTracking();
+  setupPlanner();
   setupEmergencyFeatures();
   resetSelectedPanels();
   renderRideControls();

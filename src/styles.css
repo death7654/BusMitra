@@ -398,11 +398,44 @@ body.stale .stamp{color:var(--yellow)}
 .hot .circle{background:var(--red)}.warm .circle{background:var(--yellow)}.cool .circle{background:var(--green)}
 
 /* ---------- Insights ---------- */
-.insight{padding:18px 0}
-.insight:first-child{padding-top:0}
-.insight:not(:first-child){border-top:1px solid var(--line)}
-.insight strong{font-size:13.5px;font-weight:700}
-.insight p{font-size:12.5px;color:var(--muted);line-height:1.55;margin:9px 0 0}
+/* ---------- Insights ---------- */
+.ins-selected{display:flex;justify-content:space-between;align-items:center;margin:-6px 2px 14px;font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.04em}
+.ins-selected .tag{color:var(--cyan);font:700 13px "Space Grotesk";text-transform:none;letter-spacing:0}
+.ins-hero{display:flex;align-items:baseline;gap:10px;margin-bottom:16px}
+.ins-hero b{font:700 36px "Space Grotesk";letter-spacing:-.5px;line-height:1}
+.ins-hero span{font-size:13px;font-weight:700}
+.ins-blend{display:flex;gap:2px;height:10px;border-radius:6px;overflow:hidden;background:var(--panel-alt)}
+.ins-blend-live{background:var(--cyan)}
+.ins-blend-model{background:var(--blue)}
+.ins-legend{display:flex;justify-content:space-between;gap:10px;font-size:11.5px;color:var(--muted);margin:9px 0 16px;font-weight:500}
+.ins-legend b{color:var(--text);font-weight:700}
+.ins-legend i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}
+.ins-source{display:flex;align-items:center;gap:12px;padding:12px 0;border-top:1px solid var(--line)}
+.ins-source>i{flex:0 0 auto;width:34px;height:34px;border-radius:var(--r-sm);display:grid;place-items:center;background:var(--panel-alt);color:var(--cyan);font-size:15px}
+.ins-source-main{flex:1;min-width:0}
+.ins-source-main b{display:block;font-size:13px;font-weight:600}
+.ins-source-main span{display:block;font-size:11.5px;color:var(--muted);margin-top:2px}
+.ins-source-val{text-align:right}
+.ins-source-val b{display:block;font:700 15px "Space Grotesk"}
+.ins-source-val span{display:block;font-size:10.5px;color:var(--muted);margin-top:2px}
+.ins-chip{display:inline-flex;align-items:center;gap:7px;padding:7px 12px;border-radius:20px;font-size:12.5px;font-weight:700;background:var(--panel-alt);border:1px solid var(--line)}
+.ins-chip.good{color:var(--green);background:rgba(74,222,128,.1);border-color:rgba(74,222,128,.3)}
+.ins-chip.ok{color:var(--yellow);background:rgba(251,191,36,.1);border-color:rgba(251,191,36,.3)}
+.ins-chip.warn{color:var(--orange);background:rgba(251,146,60,.1);border-color:rgba(251,146,60,.3)}
+.ins-chip.muted{color:var(--muted)}
+.ins-trust-split{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:14px 0 12px}
+.ins-trust-split div{background:var(--panel-alt);border-radius:var(--r-md);padding:12px}
+.ins-trust-split b{display:block;font:700 20px "Space Grotesk"}
+.ins-trust-split span{display:block;font-size:11px;color:var(--muted);margin-top:3px}
+.ins-note{font-size:12.5px;color:var(--muted);line-height:1.55;margin:0}
+.ins-cmp-row{display:grid;grid-template-columns:84px 1fr 40px;align-items:center;gap:10px;margin-bottom:10px;font-size:12.5px}
+.ins-cmp-name{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ins-cmp-row.is-current .ins-cmp-name{color:var(--cyan)}
+.ins-cmp-track{height:8px;border-radius:5px;background:var(--panel-alt);overflow:hidden}
+.ins-cmp-track div{height:100%;border-radius:5px}
+.ins-cmp-row b{text-align:right;font:700 13px "Space Grotesk"}
+.ins-verdict{display:flex;gap:10px;align-items:flex-start;margin-top:14px;padding:12px 14px;border-radius:var(--r-md);background:rgba(52,211,153,.1);border:1px solid rgba(52,211,153,.3);font-size:12.5px;line-height:1.5}
+.ins-verdict i{color:var(--cyan);margin-top:1px}
 
 /* ---------- Bottom tab bar ---------- */
 /* A darker, elevated nav rather than a flat strip the same flat shade
@@ -636,3 +669,66 @@ body.stale .stamp{color:var(--yellow)}
 .journey-leg:first-of-type{border-top:0}
 .journey-leg-body b{display:block;font-size:13px}
 .journey-leg-body span{display:block;font-size:11.5px;color:var(--muted);margin-top:2px}
+
+/* ---------- Floating SOS (press-and-hold) ---------- */
+.sos-fab{
+  position:absolute;right:14px;bottom:14px;z-index:20;
+  width:58px;height:58px;border-radius:50%;
+  display:grid;place-items:center;
+  background:var(--red);color:#1a0505;border:0;cursor:pointer;
+  box-shadow:0 6px 18px rgba(248,113,113,.35),var(--shadow-md);
+  font-family:"Space Grotesk",sans-serif;
+  touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;
+  transition:transform .12s ease,opacity .15s ease;
+}
+.sos-fab.is-hidden{display:none}
+.sos-fab.holding{transform:scale(1.1)}
+.sos-fab:focus-visible{outline:2px solid var(--text);outline-offset:3px}
+.sos-fab-label{font-weight:700;font-size:14px;letter-spacing:.03em;line-height:1;margin-top:-6px}
+.sos-fab-hint{
+  position:absolute;bottom:9px;left:0;right:0;text-align:center;
+  font:600 8px "DM Sans",sans-serif;text-transform:uppercase;letter-spacing:.05em;opacity:.75;
+}
+.sos-fab-ring{position:absolute;inset:-5px;width:calc(100% + 10px);height:calc(100% + 10px);transform:rotate(-90deg);pointer-events:none}
+.sos-fab-ring circle{
+  fill:none;stroke:var(--text);stroke-width:3;stroke-linecap:round;
+  stroke-dasharray:132;stroke-dashoffset:132;
+}
+.sos-fab.holding .sos-fab-ring circle{stroke-dashoffset:0;transition:stroke-dashoffset 1.2s linear}
+@media(prefers-reduced-motion:reduce){
+  .sos-fab,.sos-fab.holding .sos-fab-ring circle{transition:none}
+  .sos-fab.holding{transform:none}
+}
+
+/* ---------- Multi-stage route planner (all routes to one stop) ---------- */
+.plans{margin-top:22px}
+.plans[hidden]{display:none}
+.plans-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin:0 2px 10px}
+.plans-head h3{margin:0;font:700 15px "Space Grotesk"}
+.plans-sort{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;margin-bottom:12px;scrollbar-width:none}
+.plans-sort::-webkit-scrollbar{display:none}
+.chip{flex:0 0 auto;padding:8px 13px;border-radius:20px;border:1px solid var(--line);background:var(--panel);color:var(--muted);font:600 12px "DM Sans";cursor:pointer;transition:border-color .15s,color .15s,background .15s}
+.chip:hover{border-color:var(--cyan)}
+.chip.active{color:var(--cyan);border-color:var(--cyan);background:rgba(52,211,153,.12)}
+.plans-list{display:flex;flex-direction:column;gap:12px}
+.plan{background:var(--panel);border:1px solid var(--line);border-radius:var(--r-md);padding:15px}
+.plan.is-best{border-color:rgba(52,211,153,.5)}
+.plan-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:12px}
+.plan-head b{font:700 15px "Space Grotesk";display:flex;align-items:center;gap:8px}
+.plan-head span{font-size:11px;color:var(--muted);text-align:right}
+.plan-best{font:700 9.5px "DM Sans";text-transform:uppercase;letter-spacing:.05em;color:var(--cyan-ink);background:var(--cyan);border-radius:20px;padding:3px 7px}
+.plan-stages{list-style:none;margin:0;padding:0}
+.plan-stage,.plan-change,.plan-arrive{position:relative;padding-left:26px}
+.plan-stage::before,.plan-change::before,.plan-arrive::before{content:"";position:absolute;left:5px;top:0;bottom:0;width:2px;background:var(--line)}
+.plan-arrive::before{bottom:auto;height:9px}
+.plan-stage{padding-bottom:10px}
+.plan-stage::after{content:"";position:absolute;left:0;top:3px;width:12px;height:12px;border-radius:50%;background:var(--panel);border:2px solid var(--rc,var(--cyan))}
+.plan-route{display:flex;align-items:center;gap:8px;margin-bottom:3px}
+.plan-route b{font-size:13px;font-weight:600}
+.plan-stage-body>span{display:block;font-size:11.5px;color:var(--muted);line-height:1.45}
+.plan-change{padding-bottom:10px;padding-top:0;font-size:11.5px;color:var(--yellow);font-weight:600}
+.plan-change i{margin-right:5px}
+.plan-arrive{font-size:13px;font-weight:600;padding-top:2px}
+.plan-arrive::after{content:"";position:absolute;left:0;top:3px;width:12px;height:12px;border-radius:2px;background:var(--cyan)}
+.plan-arrive span{color:var(--muted);font-weight:500}
+@media(prefers-reduced-motion:reduce){.chip{transition:none}}
