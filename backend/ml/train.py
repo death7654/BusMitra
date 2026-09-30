@@ -27,7 +27,7 @@ Run from the backend/ directory:
 import os
 import random
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 import joblib
@@ -211,7 +211,7 @@ def train_model():
         real_rows_by_bus = {}
 
     metadata = {
-        "trained_at": datetime.utcnow(),
+        "trained_at": datetime.now(timezone.utc),
         "trained_on": trained_on,
         "synthetic_rows": len(synthetic),
         "real_rows": observed_used,

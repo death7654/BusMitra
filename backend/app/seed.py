@@ -43,13 +43,6 @@ def seed_database():
             route_name="University - City Center",
         )
 
-        bus_stops.extend(
-            add_extra_network(
-                db,
-                {"101": route_101, "102": route_102, "103": route_103},
-            )
-        )
-
         db.add_all([
             route_101,
             route_102,
@@ -2546,6 +2539,15 @@ def seed_database():
                 route_id=route_103.id,
             ),
         ]
+
+        # Extra routes, return routes and buses. Needs the routes above to be
+        # committed already (so they have ids) and returns BusStop rows.
+        bus_stops.extend(
+            add_extra_network(
+                db,
+                {"101": route_101, "102": route_102, "103": route_103},
+            )
+        )
 
         db.add_all(bus_stops)
         db.commit()
